@@ -6,10 +6,10 @@
       "category": "sentinel",
       "clouds": {
         "Commercial": {
-          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20Azure%20Activity%20Workbook.json"
+          "url": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/workbooks/Sentinel%20Workbook%20-%20Azure%20Activity%20Workbook.json"
         },
         "GCCH": {
-          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20Azure%20Activity%20Workbook.json"
+          "url": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/workbooks/Sentinel%20Workbook%20-%20Azure%20Activity%20Workbook.json"
         }
       }
     },
@@ -19,10 +19,10 @@
       "category": "sentinel",
       "clouds": {
         "Commercial": {
-          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20User%20Access%20Review.json"
+          "url": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/workbooks/Sentinel%20Workbook%20-%20User%20Access%20Review.json"
         },
         "GCCH": {
-          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20User%20Access%20Review.json"
+          "url": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/workbooks/Sentinel%20Workbook%20-%20User%20Access%20Review.json"
         }
       }
     }
