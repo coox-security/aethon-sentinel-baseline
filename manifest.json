@@ -1,0 +1,30 @@
+{
+  "workbooks": [
+    {
+      "name": "Sentinel Workbook - Azure Activity Workbook",
+      "displayName": "Azure Activity Workbook",
+      "category": "sentinel",
+      "clouds": {
+        "Commercial": {
+          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20Azure%20Activity%20Workbook.json"
+        },
+        "GCCH": {
+          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20Azure%20Activity%20Workbook.json"
+        }
+      }
+    },
+    {
+      "name": "Sentinel Workbook - User Access Review",
+      "displayName": "User Access Review Workbook",
+      "category": "sentinel",
+      "clouds": {
+        "Commercial": {
+          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20User%20Access%20Review.json"
+        },
+        "GCCH": {
+          "url": "https://raw.githubusercontent.com/AethonSecurity/aethon-sentinel-baseline/main/workbooks/Sentinel%20Workbook%20-%20User%20Access%20Review.json"
+        }
+      }
+    }
+  ]
+}
