@@ -26,8 +26,7 @@
         }
       }
     }
-  ]
-  {
+  ],
   "analyticRules": [
     {
       "name": "Sentinel Analytic Rules Batch 1",
@@ -102,5 +101,4 @@
       }
     }
   ]
-}
 }
