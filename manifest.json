@@ -27,4 +27,80 @@
       }
     }
   ]
+  {
+  "analyticRules": [
+    {
+      "name": "Sentinel Analytic Rules Batch 1",
+      "deploymentType": "armTemplate",
+      "clouds": {
+        "Commercial": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-1.json"
+        },
+        "GCCH": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-1.json"
+        }
+      }
+    },
+    {
+      "name": "Sentinel Analytic Rules Batch 2",
+      "deploymentType": "armTemplate",
+      "clouds": {
+        "Commercial": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-2.json"
+        },
+        "GCCH": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-2.json"
+        }
+      }
+    },
+    {
+      "name": "Sentinel Analytic Rules Batch 3",
+      "deploymentType": "armTemplate",
+      "clouds": {
+        "Commercial": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-3.json"
+        },
+        "GCCH": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-3.json"
+        }
+      }
+    },
+    {
+      "name": "Sentinel Analytic Rules Batch 4",
+      "deploymentType": "armTemplate",
+      "clouds": {
+        "Commercial": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-4.json"
+        },
+        "GCCH": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-4.json"
+        }
+      }
+    },
+    {
+      "name": "Sentinel Analytic Rules Batch 5",
+      "deploymentType": "armTemplate",
+      "clouds": {
+        "Commercial": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-5.json"
+        },
+        "GCCH": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-5.json"
+        }
+      }
+    },
+    {
+      "name": "Sentinel Analytic Rules Batch 6",
+      "deploymentType": "armTemplate",
+      "clouds": {
+        "Commercial": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-6.json"
+        },
+        "GCCH": {
+          "uri": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/analytic-rules/batch-6.json"
+        }
+      }
+    }
+  ]
+}
 }
