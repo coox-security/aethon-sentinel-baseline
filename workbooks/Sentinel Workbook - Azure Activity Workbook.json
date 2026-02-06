@@ -1,0 +1,850 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "Please note that this workbook is dynamic and by default will show information on activity within the timeframe set in the parameter below."
+      },
+      "name": "text - 10"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "1ad41d8e-c254-4d86-b8f7-8cfef866c2c0",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "type": 6,
+            "isRequired": true,
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "includeAll": true,
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea"
+          },
+          {
+            "id": "2000c1af-bd5c-447c-8368-bf6a7d19dae1",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "type": 5,
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea/resourcegroups/a2gcyberteam/providers/microsoft.operationalinsights/workspaces/a2g-global-cloud"
+          },
+          {
+            "id": "ebcaf836-7197-4001-ae51-a789bc9b0c62",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeFrame",
+            "type": 4,
+            "isRequired": true,
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "timeContext": {
+              "durationMs": 86400000
+            },
+            "value": {
+              "durationMs": 2592000000
+            }
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "parameters - 0"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Incidents",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident\r\n| where ModifiedBy == \"Incident created from alert\" or ModifiedBy == \"Microsoft 365 Defender\"\r\n| summarize Total_Incidents = count() by \"\"\r\n| project Total_Incidents\r\n\r\n\r\n",
+              "size": 3,
+              "title": "Total incidents seen this period:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "card",
+              "textSettings": {
+                "style": "bignumber"
+              }
+            },
+            "name": "query - 1"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Incident severity is categorized by \"Informational\", \"Low\", \"Medium\", and \"High\" and come from a variety of sources within the environment.  Informational alerts are typically benign in nature, but can give clues to activity when combined with other alerts.  Low and medium severity alerts can be normal user activity, but require some investigation by an analyst to corroborate information or confirm activity.  Low and medium severity alerts can contain anomallies, such as a user signing in from a new internet protocol (IP) address that was not seen from the user previously.  High severity alerts always require investigation and can indicate events such as insider risk, password compromise, ransomware downloads, etc."
+            },
+            "name": "text - 5"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident\r\n| where ModifiedBy == \"Incident created from alert\" or ModifiedBy == \"Microsoft 365 Defender\"\r\n| where Severity == \"High\"\r\n| summarize count() by Title",
+              "size": 3,
+              "title": "High severity incident count by title:",
+              "noDataMessage": "None for the period.",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "piechart"
+            },
+            "customWidth": "50",
+            "name": "query - 7"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident \r\n| where ModifiedBy == \"Incident created from alert\" or ModifiedBy == \"Microsoft 365 Defender\"\r\n| where Severity != \"Informational\"\r\n| where Title != \"Blocked .exe from installing\"\r\n| summarize count() by Title\r\n| sort by count_ desc\r\n| take 5",
+              "size": 3,
+              "title": "Most frequent top 5 non-informational incidents:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "piechart",
+              "tileSettings": {
+                "showBorder": false,
+                "titleContent": {
+                  "columnMatch": "Title",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "count_",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "graphSettings": {
+                "type": 0,
+                "topContent": {
+                  "columnMatch": "Title",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "count_",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "query - 6"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident\r\n| where ModifiedBy == \"Incident created from alert\" or ModifiedBy == \"Microsoft 365 Defender\"\r\n| summarize count() by Severity\r\n",
+              "size": 0,
+              "title": "Incident count by severity:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "barchart",
+              "tileSettings": {
+                "showBorder": false,
+                "titleContent": {
+                  "columnMatch": "Severity",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "count_",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "graphSettings": {
+                "type": 0,
+                "topContent": {
+                  "columnMatch": "Severity",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "count_",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "customWidth": "50",
+            "name": "query - 2"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident\r\n| where ModifiedBy == \"Incident created from alert\" or ModifiedBy == \"Microsoft 365 Defender\"\r\n| summarize count() by Title, Severity\r\n| project Severity, Title, count_\r\n| sort by count_ desc\r\n",
+              "size": 0,
+              "title": "Incidents seen this period:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "customWidth": "50",
+            "name": "query - 3"
+          }
+        ]
+      },
+      "name": "Incident Rundown",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let M2131Mapping = externaldata(DataTable: string, MaturityLevel: string) [@\"https://raw.githubusercontent.com/Azure/Azure-Sentinel/master/Sample%20Data/Feeds/M2131RecommendedDataTables.csv\"] with (format=\"csv\", ignoreFirstRecord=True);\r\nlet LastLogTime = union withsource = _TableName *\r\n    | summarize LastLog_Time = arg_max(TimeGenerated, *) by _TableName;\r\nunion withsource = _TableName *\r\n| summarize last_log = datetime_diff(\"second\", now(), max(TimeGenerated)) by _TableName\r\n| where last_log > 0\r\n| join kind=inner (LastLogTime) on _TableName\r\n| project DataTable = _TableName, ['Last Log Received'] = last_log, LastLog_Time\r\n| join kind=fullouter(M2131Mapping) on DataTable\r\n| project-away DataTable1\r\n| where MaturityLevel in ('Event Logging (EL0)', 'Basic Event Logging (EL1)', 'Intermediate Event Logging (EL2)', 'Advanced Event Logging (EL3)', '')\r\n| order by ['Last Log Received'] desc\r\n| project DataTable\r\n| where isnotempty(DataTable)\r\n",
+        "size": 0,
+        "title": "All datatables reporting this period:",
+        "timeContextFromParameter": "TimeFrame",
+        "queryType": 0,
+        "resourceType": "{Workspace}",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "DataTable",
+              "formatter": 0,
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "useGrouping": false
+                }
+              }
+            }
+          ]
+        }
+      },
+      "customWidth": "50",
+      "name": "query - 4 - Copy",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Incident Statistics",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let M2131Mapping = externaldata(DataTable: string, MaturityLevel: string) [@\"https://raw.githubusercontent.com/Azure/Azure-Sentinel/master/Sample%20Data/Feeds/M2131RecommendedDataTables.csv\"] with (format=\"csv\", ignoreFirstRecord=True);\r\nlet LastLogTime = union withsource = _TableName *\r\n    | summarize LastLog_Time = arg_max(TimeGenerated, *) by _TableName;\r\nunion withsource = _TableName *\r\n| summarize last_log = datetime_diff(\"second\", now(), max(TimeGenerated)) by _TableName\r\n| where last_log > 0\r\n| join kind=inner (LastLogTime) on _TableName\r\n| project DataTable = _TableName, ['Last Log Received'] = last_log, LastLog_Time\r\n| join kind=fullouter(M2131Mapping) on DataTable\r\n| project-away DataTable1\r\n| where MaturityLevel in ('Event Logging (EL0)', 'Basic Event Logging (EL1)', 'Intermediate Event Logging (EL2)', 'Advanced Event Logging (EL3)', '')\r\n| order by ['Last Log Received'] desc\r\n| summarize Average_Last_Log_Received = strcat(round(avg(((['Last Log Received'])/60)/60), 1), \" Hours\")\r\n",
+              "size": 3,
+              "title": "Datatable invisibility rate in hours:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "card",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Average_Last_Log_Received",
+                    "formatter": 1
+                  }
+                ]
+              },
+              "textSettings": {
+                "style": "bignumber"
+              }
+            },
+            "name": "query - 4"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The “invisibility rate” is determined by an average of time since the last log from a data table was received by Sentinel.  In general, data tables will not report anything to Sentinel unless there is new data since the previous reporting event. "
+            },
+            "name": "text - 5"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident\r\n| where Severity != \"Informational\"\r\n| extend TimeToFirstModification = datetime_diff('hour', CreatedTime, FirstModifiedTime)\r\n| where isnotempty(TimeToFirstModification) and TimeToFirstModification != 0\r\n| summarize AvgTimeToFirstModification = strcat(round(avg(abs(TimeToFirstModification)), 1), \" Hours\")\r\n",
+              "size": 3,
+              "title": "Mean time to triage:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "card",
+              "textSettings": {
+                "style": "bignumber"
+              }
+            },
+            "name": "query - 8"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "This figure represents the average time between when an incident was created in Sentinel and the first change to the incident event.  This figure is affected by factors such as analyst response time, automation rules, etc. "
+            },
+            "name": "text - 3"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityIncident\r\n| where Severity != \"Informational\"\r\n| extend TimeToClose = datetime_diff('hour', CreatedTime, ClosedTime)\r\n| where isnotempty(TimeToClose) and TimeToClose != 0\r\n| summarize TimeToClose = strcat(round(avg(abs(TimeToClose)), 1), \" Hours\")",
+              "size": 3,
+              "title": "Mean time to close:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "card",
+              "textSettings": {
+                "style": "bignumber"
+              }
+            },
+            "name": "query - 9"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "This figure represents the average time between incident creation in Sentinel and incident closure by an analyst.  Incidents are closed once an investigation is complete and is affected by analyst availability, automation rules, user response time to analyst inquiries, etc. \r\n\r\nIt is not unusual for this figure to be shorter than the “Mean Time to Triage” due to automation settings for closing informational alerts. "
+            },
+            "name": "text - 4"
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "Incident Statistics",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Inactive Accounts",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "The below accounts have not been active in at least 23 days and have not been deleted or disabled in Azure AD.  The table shows the most recent sign-in for the account.  Stale accounts should be removed in order to reduce the attack surface.  Accounts are automatically disabled after 30 days of inactivity.  Automation has been configured to alert directors when users have failed to sign in for 23 days. "
+            },
+            "name": "text - 0"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let LatestDumpTime = toscalar(\r\n    InactiveUserAccounts_CL\r\n    | summarize max(TimeGenerated)\r\n);\r\nInactiveUserAccounts_CL\r\n| where TimeGenerated == LatestDumpTime\r\n| extend Users = parse_json(body_s)\r\n| mv-expand Users\r\n| project \r\n    displayName = tostring(Users.displayName),\r\n    userPrincipalName = tostring(Users.userPrincipalName),\r\n    accountEnabled = tostring(Users.accountEnabled),\r\n    lastSignInDateTime = tostring(Users.lastSignInDateTime)\r\n| where isnotempty(displayName)\r\n| where accountEnabled == \"true\"\r\n",
+              "size": 0,
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "customWidth": "0",
+            "name": "query - 14",
+            "styleSettings": {
+              "maxWidth": "30"
+            }
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "Inactive accounts",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "GroupMembership_CL\r\n| where TimeGenerated == toscalar(\r\n    GroupMembership_CL\r\n    | summarize max(TimeGenerated)\r\n)\r\n| extend records_array = parse_json(body_s)\r\n| mv-expand record = records_array\r\n| extend record_json = tostring(record)\r\n| extend\r\n    Id = tostring(record.Id),\r\n    DisplayName = tostring(record.DisplayName),\r\n    UserPrincipalName = tostring(record.UserPrincipalName),\r\n    DeviceId = tostring(record.DeviceId),\r\n    ObjectType = tostring(record.ObjectType),\r\n    GroupName = tostring(record.GroupName),\r\n    GroupId = tostring(record.GroupId),\r\n    MemberTime = tostring(record.TimeGenerated)\r\n| where isnotempty(DisplayName)\r\n| where GroupName == \"Exclusions - Require Device Compliance - Workstations Conditional Access Policy\"\r\n| project GroupName, UserPrincipalName, DisplayName",
+        "size": 0,
+        "title": "Device Compliance Exclusions",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "50",
+      "name": "query - 14",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Conditional Access Failures",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "This section highlights the top 5 Conditional Access (CA) Policy failures over the period."
+            },
+            "name": "text - 1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\r\n| where isnotempty(ConditionalAccessPolicies)\r\n| extend ConditionalAccessPoliciesArray = parsejson(ConditionalAccessPolicies)\r\n| mv-expand policy = ConditionalAccessPoliciesArray\r\n| project TimeGenerated, UserPrincipalName, displayName = policy.displayName, result = policy.result\r\n| where result != \"notApplied\"\r\n| where result != \"success\"\r\n| summarize count() by tostring(FailedPolicy = displayName)\r\n| sort by count_ desc\r\n| take 5",
+              "size": 0,
+              "title": "Conditional Access Policy Failures",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "name": "query - 12"
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "group - 13",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "SigninLogs\r\n//| where ConditionalAccessStatus == \"success\"\r\n| project City = LocationDetails.city, latitude = LocationDetails.geoCoordinates.latitude, longitude = LocationDetails.geoCoordinates.longitude\r\n| summarize count() by tostring(City), tostring(latitude), tostring(longitude)\r\n| where isnotempty(City)\r\n| sort by count_ desc ",
+        "size": 3,
+        "title": "Signins by geolocation:",
+        "timeContextFromParameter": "TimeFrame",
+        "queryType": 0,
+        "resourceType": "{Workspace}",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "map",
+        "mapSettings": {
+          "locInfo": "LatLong",
+          "locInfoColumn": "City",
+          "latitude": "latitude",
+          "longitude": "longitude",
+          "sizeSettings": "count_",
+          "sizeAggregation": "Sum",
+          "labelSettings": "City",
+          "legendMetric": "count_",
+          "numberOfMetrics": 10,
+          "legendAggregation": "Sum",
+          "itemColorSettings": {
+            "nodeColorField": "count_",
+            "colorAggregation": "Sum",
+            "type": "heatmap",
+            "heatmapPalette": "yellowGreenBlue"
+          }
+        }
+      },
+      "customWidth": "50",
+      "name": "query - 15"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "IntuneDevices_CL\r\n| where TimeGenerated > ago(24h)\r\n| mv-expand record = parse_json(body_s)\r\n| extend\r\n    DeviceName = tostring(record.DeviceName),\r\n    Compliance = tostring(record.Compliance),\r\n    UserPrincipal = tostring(record.UserPrincipal),\r\n    LastContact = format_datetime(todatetime(record.LastSync), \"M/dd/yy\")\r\n| where isnotempty(Compliance) and Compliance != \"compliant\"\r\n| project DeviceName, Compliance, UserPrincipal, LastContact\r\n| sort by DeviceName asc",
+        "size": 0,
+        "title": "Device Compliance",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "50",
+      "name": "query - 13",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Custom Network Indicators",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Custom network indicators are websites that have been configured to be audited based on network settings.  Some examples include adult content, gambling, and webmail services.  These should be reviewed as they can highlight potential compromise."
+            },
+            "name": "text - 0"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityAlert\r\n| where DisplayName == \"Connection to a custom network indicator\"\r\n| where TimeGenerated > ago(30d)\r\n| extend URL = extract('(?i)https?://\\\\S+\\\\.[a-zA-Z]+/', 0, Entities)\r\n| project CompromisedEntity, TimeGenerated, URL\r\n| where URL !contains \"platform\"\r\n| where URL !contains \"embed\"\r\n| summarize count() by URL\r\n| project-rename NumberOfVisits = count_\r\n| sort by NumberOfVisits desc\r\n",
+              "size": 3,
+              "title": "Custom network indicators found during the period:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "piechart"
+            },
+            "name": "query - 1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityAlert\r\n| where DisplayName == \"Connection to a custom network indicator\"\r\n| extend URL = extract('(?i)https?://\\\\S+\\\\.com/', 0, Entities)\r\n| project CompromisedEntity, TimeGenerated, URL\r\n| where URL !contains \"platform\"\r\n| where URL !contains \"embed\"\r\n| summarize count() by CompromisedEntity\r\n| sort by count_ desc\r\n| take 5\r\n",
+              "size": 3,
+              "title": "Top 5 offending users by connection count:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "piechart"
+            },
+            "customWidth": "0",
+            "name": "query - 2",
+            "styleSettings": {
+              "maxWidth": "50"
+            }
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "Custom Network Indicators",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "Removable Media Activity",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Files copied to removable media can be a sign of attempted exfiltration.  This section should be reviewed and compared to users that are authorized for USB removable drives.  Keep in mind that docking stations will sometimes cause a false positive to occur."
+            },
+            "name": "text - 2"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "DeviceEvents\r\n| where ActionType == \"UsbDriveMounted\"\r\n| extend DriveLetter = tostring(todynamic(AdditionalFields).DriveLetter)\r\n| join kind=inner (DeviceFileEvents\r\n    | where ActionType == \"FileCreated\"\r\n    | project TimeGenerated, ActionType, FolderPath, DeviceId, FileName, FileSize\r\n    | extend FileCopyTime = TimeGenerated\r\n    | parse FolderPath with DriveLetter '\\\\' *\r\n    | extend DriveLetter = tostring(DriveLetter)\r\n    )\r\n    on DeviceId, DriveLetter\r\n| extend user = tostring(parse_json(tostring(AdditionalFields.LoggedOnUsers))[0])\r\n| project TimeGenerated, ['user'], FolderPath, FileName1\r\n\r\n",
+              "size": 0,
+              "title": "Files copied to removable media:",
+              "noDataMessage": "Empty results here simply mean that there were no files copied to removable media detected and should be considered normal.",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "customWidth": "0",
+            "name": "query - 0",
+            "styleSettings": {
+              "maxWidth": "50"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "DeviceEvents\r\n| where ActionType == \"UsbDriveMounted\"\r\n| summarize arg_max(TimeGenerated, DeviceName, AdditionalFields.Manufacturer, AdditionalFields.ProductName) by DeviceName\r\n| project format_datetime(TimeGenerated - 5h,'M-d-yyyy hh:mm tt'), DeviceName, AdditionalFields_Manufacturer, AdditionalFields_ProductName\r\n| project-rename MostRecent = Column1, Manufacturer = AdditionalFields_Manufacturer, ProductName = AdditionalFields_ProductName",
+              "size": 0,
+              "title": "USB connections for the period, summarized by the most recent per device:",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "customWidth": "0",
+            "name": "query - 1",
+            "styleSettings": {
+              "maxWidth": "50"
+            }
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "group - 11",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "AntiVirus Activity",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "This section tracks devices where an anti-virus scan has not completed per policy.  In particular, this section will highlight the average number of days that a device missed an AV scan. "
+            },
+            "name": "text - 0"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "DeviceEvents\r\n| where ActionType == \"AntivirusScanCompleted\"\r\n| summarize last_scan_days_ago = round((now() - max(TimeGenerated)) / 1d, 0) by DeviceName\r\n| summarize max_days_without_scan = max(last_scan_days_ago) by DeviceName\r\n| sort by max_days_without_scan\r\n| take 5",
+              "size": 3,
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "showBorder": false,
+                "titleContent": {
+                  "columnMatch": "DeviceName",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "max_days_without_scan",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "auto"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              },
+              "graphSettings": {
+                "type": 0,
+                "topContent": {
+                  "columnMatch": "DeviceName",
+                  "formatter": 1
+                },
+                "centerContent": {
+                  "columnMatch": "max_days_without_scan",
+                  "formatter": 1,
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "maximumSignificantDigits": 3,
+                      "maximumFractionDigits": 2
+                    }
+                  }
+                }
+              }
+            },
+            "name": "query - 12"
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "Antivirus",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "UAC Completions",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "This section tracks the number of times a UAC prompt was completed.  UAC prompts occur when system changes are attempted by the user such as installing or deleting software.  False positives can occur with the user that is logged in versus the admin that completed the UAC prompt."
+            },
+            "name": "text - 1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let gap = 5m;\r\nDeviceLogonEvents\r\n| where InitiatingProcessCommandLine has \"consent.exe\"\r\n| where LogonType != \"CachedInteractive\"\r\n| project TimeGenerated, AccountName, DeviceName\r\n| sort by AccountName asc, DeviceName asc, TimeGenerated asc\r\n| serialize\r\n| extend PrevTime = prev(TimeGenerated),\r\n         PrevAcct = prev(AccountName),\r\n         PrevDev  = prev(DeviceName)\r\n| extend NewGroup =\r\n    iif(AccountName != PrevAcct or DeviceName != PrevDev or isnull(PrevTime) or TimeGenerated - PrevTime > gap, 1, 0)\r\n| extend GroupId = row_cumsum(NewGroup)\r\n| summarize\r\n    StartTime = min(TimeGenerated),\r\n    EndTime   = max(TimeGenerated),\r\n    Events    = count()\r\n  by AccountName, DeviceName, GroupId\r\n| project StartTime, AccountName, DeviceName, EndTime, Events\r\n| order by StartTime desc\r\n",
+              "size": 0,
+              "noDataMessage": "None for the period.",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "{Workspace}",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "name": "query - 13"
+          }
+        ]
+      },
+      "customWidth": "50",
+      "name": "UAC",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "title": "DLP Activity",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "This section will track when a data loss prevention (DLP) rule is matched as this can indicate potential exfiltration of sensitive information and these events should be reviewed on a regular basis.  An accompanying spreadsheet on sensitivity label activity will be included with biweekly report deliverables when applicable."
+            },
+            "name": "text - 1"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "CloudAppEvents\r\n| where ActionType == \"DLPRuleMatch\" or ActionType == \"DlpRuleMatch\"\r\n| project TimeGenerated, ObjectType, Sender = RawEventData.ExchangeMetaData.From, Recipients = RawEventData.ExchangeMetaData.To, ObjectName, Policy = RawEventData.PolicyDetails[0].PolicyName, User = RawEventData.UserId\r\n| sort by TimeGenerated asc \r\n",
+              "size": 3,
+              "title": "DLP Rule Matches:",
+              "noDataMessage": "None for the period.",
+              "timeContextFromParameter": "TimeFrame",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ]
+            },
+            "name": "query - 11"
+          }
+        ]
+      },
+      "name": "Purview Activity",
+      "styleSettings": {
+        "showBorder": true
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea/resourcegroups/a2gcyberteam/providers/microsoft.operationalinsights/workspaces/a2g-global-cloud"
+  ],
+  "fromTemplateId": "sentinel-UserWorkbook",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

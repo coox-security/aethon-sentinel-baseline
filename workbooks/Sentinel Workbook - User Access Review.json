@@ -1,0 +1,125 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "<h1 style='font-size:28px; color:#3b3b3b;'>User Access & Role Review Dashboard</h1>\n<p style='font-size:16px; color:#777;'>Automated view of current PIM assignments and Azure subscription role bindings.</p>"
+      },
+      "name": "title - 0"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "GroupMembership_CL\r\n| where TimeGenerated == toscalar(\r\n    GroupMembership_CL\r\n    | summarize max(TimeGenerated)\r\n)\r\n| extend records_json = parse_json(body_s)\r\n| mv-expand member = records_json\r\n| project \r\n    GroupName = tostring(member.GroupName),\r\n    UserPrincipalName = tostring(member.UserPrincipalName),\r\n    DisplayName = tostring(member.DisplayName)\r\n| where isnotempty(DisplayName)\r\n| sort by GroupName asc\r\n",
+        "size": 3,
+        "title": "Exclusion Group Memberships",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "query - 5",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let LatestTime = toscalar(PIMAssignments_CL | summarize max(TimeGenerated));\nPIMAssignments_CL\n| where TimeGenerated between (LatestTime - 5s .. LatestTime)\n| extend roleName = tostring(coalesce(column_ifexists(\"roleName_s\",\"\"), column_ifexists(\"roleName\",\"\")))\n| extend name     = tostring(coalesce(column_ifexists(\"name_s\",\"\"), column_ifexists(\"userOrServiceName_s\",\"\"), column_ifexists(\"userOrServiceName\",\"\")))\n| extend rtype    = tostring(coalesce(column_ifexists(\"type_s\",\"\"), column_ifexists(\"type\",\"\")))\n| extend principalId = tostring(coalesce(column_ifexists(\"principalId_g\",\"\"), column_ifexists(\"principalId\",\"\")))\n| project roleName, name, rtype, principalId\n| order by roleName asc, name asc\n",
+        "size": 3,
+        "title": "PIM Role Assignments",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "name": "query - PIM Assignments",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let LatestTime = toscalar(SubscriptionRoleReview_CL | summarize max(TimeGenerated));\nSubscriptionRoleReview_CL\n| where TimeGenerated between (LatestTime - 5s .. LatestTime)\n| extend userOrServiceName = tostring(coalesce(column_ifexists(\"userOrServiceName_s\",\"\"), column_ifexists(\"userOrServiceName\",\"\")))\n| extend roleName         = tostring(coalesce(column_ifexists(\"roleName_s\",\"\"),         column_ifexists(\"roleName\",\"\")))\n| extend principalId      = tostring(coalesce(column_ifexists(\"principalId_g\",\"\"),      column_ifexists(\"principalId\",\"\")))\n| project TimeGenerated, userOrServiceName, roleName\n| order by roleName asc, userOrServiceName asc\n",
+        "size": 3,
+        "title": "Current Subscription Role Assignments",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "rowLimit": 10000
+        }
+      },
+      "name": "query - Subscription Role Review",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "InactiveUserAccounts_CL\n| extend users = parse_json(body_s)\n| mv-expand users\n| extend\n    displayName       = tostring(users.displayName),\n    userPrincipalName = tostring(users.userPrincipalName),\n    accountEnabled    = tobool(users.accountEnabled),\n    lastSignInDateTime = todatetime(users.lastSignInDateTime)\n| where lastSignInDateTime < ago(30d)\n| summarize arg_max(lastSignInDateTime, displayName, accountEnabled) by userPrincipalName\n| project displayName, userPrincipalName, accountEnabled, lastSignInDateTime\n| order by lastSignInDateTime desc\n| where displayName !contains \"Inactive\"",
+        "size": 3,
+        "title": "Inactive User Accounts (30+ Days)",
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "gridSettings": {
+          "rowLimit": 10000,
+          "sortBy": [
+            {
+              "itemKey": "lastSignInDateTime",
+              "sortOrder": 1
+            }
+          ]
+        },
+        "sortBy": [
+          {
+            "itemKey": "lastSignInDateTime",
+            "sortOrder": 1
+          }
+        ]
+      },
+      "name": "query - Inactive Users",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "InactiveEntraDevices_CL\r\n| where deviceInfo_lastSignIn_t < ago(30d)\r\n//| where isnotempty(deviceInfo_ownerUPN_s)\r\n| summarize arg_max(deviceInfo_lastSignIn_t, deviceInfo_deviceName_s, deviceInfo_ownerUPN_s, deviceInfo_operatingSystem_s) by deviceInfo_deviceId_g\r\n| project deviceInfo_deviceName_s, deviceInfo_lastSignIn_t, deviceInfo_ownerUPN_s, deviceInfo_operatingSystem_s\r\n| where deviceInfo_operatingSystem_s == \"Windows\"",
+        "size": 3,
+        "title": "Inactive Devices 30+ days",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "showExportToExcel": true,
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "sortBy": []
+      },
+      "name": "query - 4",
+      "styleSettings": {
+        "showBorder": true
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea/resourcegroups/a2gcyberteam/providers/microsoft.operationalinsights/workspaces/a2g-global-cloud"
+  ],
+  "fromTemplateId": "sentinel-UserWorkbook",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
