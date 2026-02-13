@@ -1,0 +1,32 @@
+{
+  "logicApps": [
+    {
+      "name": "DeviceAccountDisable",
+      "templatePath": "logicapps/DeviceAccountDisable/template.json"
+    },
+    {
+      "name": "EntraInactiveDevices",
+      "templatePath": "logicapps/EntraInactiveDevices/template.json"
+    },
+    {
+      "name": "ExclusionGroupMembership",
+      "templatePath": "logicapps/ExclusionGroupMembership/template.json"
+    },
+    {
+      "name": "InactiveUserAccounts",
+      "templatePath": "logicapps/InactiveUserAccounts/template.json"
+    },
+    {
+      "name": "IntuneDataIngestion",
+      "templatePath": "logicapps/IntuneDataIngestion/template.json"
+    },
+    {
+      "name": "PIMAssignmentReview",
+      "templatePath": "logicapps/PIMAssignmentReview/template.json"
+    },
+    {
+      "name": "SubscriptionAssignmentReview",
+      "templatePath": "logicapps/SubscriptionAssignmentReview/template.json"
+    }
+  ]
+}
