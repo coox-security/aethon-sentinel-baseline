@@ -39,7 +39,7 @@
             "$connections": { "defaultValue": {}, "type": "Object" },
             "tenantId": { "defaultValue": "", "type": "String" },
             "clientId": { "defaultValue": "", "type": "String" },
-            "clientSecret": { "defaultValue": "", "type": "String" },
+            "clientSecret": { "defaultValue": "", "type": "SecureString" },
             "exclusionGroupsCsv": { "defaultValue": "", "type": "String" }
           },
           "triggers": {
@@ -55,7 +55,7 @@
               "type": "InitializeVariable",
               "inputs": {
                 "variables": [
-                  { "name": "CollectGroupMembers", "type": "array" },
+                  { "name": "CollectGroupMembers", "type": "array", "value": [] },
                   { "name": "tenantId", "type": "string", "value": "@parameters('tenantId')" },
                   { "name": "clientId", "type": "string", "value": "@parameters('clientId')" },
                   { "name": "clientSecret", "type": "string", "value": "@parameters('clientSecret')" }
@@ -93,7 +93,7 @@
             "Compose_Group_Pairs": {
               "runAfter": { "Compose_Access_Token": [ "Succeeded" ] },
               "type": "Compose",
-              "inputs": "@split(replace(parameters('exclusionGroupsCsv'),'\\n',''),',')"
+              "inputs": "@split(replace(replace(parameters('exclusionGroupsCsv'),'\\r',''),'\\n',''),',')"
             },
 
             "Filter_NonEmpty_Pairs": {
@@ -101,7 +101,7 @@
               "type": "Query",
               "inputs": {
                 "from": "@outputs('Compose_Group_Pairs')",
-                "where": "@and(not(empty(item())), contains(item(), '='))"
+                "where": "@and(not(empty(trim(item()))), contains(item(), '='))"
               }
             },
 
@@ -112,7 +112,7 @@
                 "from": "@body('Filter_NonEmpty_Pairs')",
                 "select": {
                   "GroupId": "@trim(first(split(item(),'=')))",
-                  "GroupName": "@trim(last(split(item(),'=')))"
+                  "GroupName": "@trim(join(skip(split(item(),'='), 1), '='))"
                 }
               }
             },
@@ -131,12 +131,15 @@
                       "Authorization": "Bearer @{outputs('Compose_Access_Token')}",
                       "ConsistencyLevel": "eventual"
                     }
+                  },
+                  "runtimeConfiguration": {
+                    "paginationPolicy": { "minimumItemCount": 1000 }
                   }
                 },
                 "For_each_member": {
                   "runAfter": { "Get_Group_Members": [ "Succeeded" ] },
                   "type": "Foreach",
-                  "foreach": "@body('Get_Group_Members')?['value']",
+                  "foreach": "@coalesce(body('Get_Group_Members')?['value'], createArray())",
                   "actions": {
                     "Append_to_array_variable": {
                       "type": "AppendToArrayVariable",
@@ -147,7 +150,7 @@
                           "DisplayName": "@{coalesce(item()?['displayName'],'')}",
                           "UserPrincipalName": "@{coalesce(item()?['userPrincipalName'],'')}",
                           "DeviceId": "@{coalesce(item()?['deviceId'],'')}",
-                          "ObjectType": "@{item()?['@odata.type']}",
+                          "ObjectType": "@{coalesce(item()?['@odata.type'],'')}",
                           "GroupName": "@{items('For_each_group')?['GroupName']}",
                           "GroupId": "@{items('For_each_group')?['GroupId']}",
                           "TimeGenerated": "@{utcNow()}"
@@ -188,9 +191,7 @@
                 },
                 "method": "post",
                 "body": "@outputs('Select_Output')",
-                "headers": {
-                  "Log-Type": "GroupMembership"
-                },
+                "headers": { "Log-Type": "GroupMembership" },
                 "path": "/api/logs"
               }
             }
