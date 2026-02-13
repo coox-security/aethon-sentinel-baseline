@@ -1,1 +1,203 @@
-{}
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workflows_DeviceAccountDisable_name": {
+      "type": "String",
+      "defaultValue": "DeviceAccountDisable"
+    },
+    "tenantId": { "type": "String" },
+    "clientId": { "type": "String" },
+    "clientSecret": { "type": "SecureString" },
+
+    "userInactivityDays": {
+      "type": "Int",
+      "defaultValue": 30,
+      "minValue": 1
+    },
+    "deviceInactivityDays": {
+      "type": "Int",
+      "defaultValue": 45,
+      "minValue": 1
+    },
+
+    "excludedObjectIdsCsv": {
+      "type": "String",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated list of Entra object IDs to exclude from disable actions (users/devices). Example: id1,id2,id3"
+      }
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('workflows_DeviceAccountDisable_name')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "state": "Disabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "tenantId": { "type": "String", "defaultValue": "" },
+            "clientId": { "type": "String", "defaultValue": "" },
+            "clientSecret": { "type": "String", "defaultValue": "" },
+            "userInactivityDays": { "type": "Int", "defaultValue": 30 },
+            "deviceInactivityDays": { "type": "Int", "defaultValue": 45 },
+            "excludedObjectIdsCsv": { "type": "String", "defaultValue": "" }
+          },
+          "triggers": {
+            "Recurrence": {
+              "type": "Recurrence",
+              "recurrence": { "frequency": "Day", "interval": 1 },
+              "evaluatedRecurrence": { "frequency": "Day", "interval": 1 }
+            }
+          },
+          "actions": {
+            "Init_Variables": {
+              "runAfter": {},
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  { "name": "tenantId", "type": "string", "value": "@parameters('tenantId')" },
+                  { "name": "clientId", "type": "string", "value": "@parameters('clientId')" },
+                  { "name": "clientSecret", "type": "string", "value": "@parameters('clientSecret')" },
+
+                  {
+                    "name": "excludedObjectIds",
+                    "type": "array",
+                    "value": "@if(or(equals(parameters('excludedObjectIdsCsv'), ''), empty(parameters('excludedObjectIdsCsv'))), createArray(), split(replace(parameters('excludedObjectIdsCsv'),' ',''), ','))"
+                  }
+                ]
+              }
+            },
+
+            "Get_Token": {
+              "runAfter": { "Init_Variables": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://login.microsoftonline.com/@{variables('tenantId')}/oauth2/v2.0/token",
+                "method": "POST",
+                "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://graph.microsoft.com/.default"
+              }
+            },
+
+            "Get_Users": {
+              "runAfter": { "Get_Token": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://graph.microsoft.com/v1.0/users?$select=id,userPrincipalName,accountEnabled,signInActivity&$top=999",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                  "ConsistencyLevel": "eventual"
+                }
+              }
+            },
+
+            "Get_Devices": {
+              "runAfter": { "Get_Token": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://graph.microsoft.com/v1.0/devices?$select=id,accountEnabled,deviceName,approximateLastSignInDateTime&$top=999",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}"
+                }
+              }
+            },
+
+            "Filter_Users": {
+              "runAfter": { "Get_Users": [ "Succeeded" ] },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_Users')?['value']",
+                "where": "@and(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['signInActivity']?['lastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, parameters('userInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
+              }
+            },
+
+            "Filter_Devices": {
+              "runAfter": { "Get_Devices": [ "Succeeded" ] },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_Devices')?['value']",
+                "where": "@and(not(empty(item()?['approximateLastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['approximateLastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, parameters('deviceInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
+              }
+            },
+
+            "Compose_DisabledUsersPreview": {
+              "runAfter": { "Filter_Users": [ "Succeeded" ] },
+              "type": "Compose",
+              "inputs": "@body('Filter_Users')"
+            },
+
+            "Compose_DisabledDevicesPreview": {
+              "runAfter": { "Filter_Devices": [ "Succeeded" ] },
+              "type": "Compose",
+              "inputs": "@body('Filter_Devices')"
+            },
+
+            "Disable_Users": {
+              "runAfter": { "Compose_DisabledUsersPreview": [ "Succeeded" ] },
+              "type": "Foreach",
+              "foreach": "@outputs('Compose_DisabledUsersPreview')",
+              "actions": {
+                "PATCH_User_Disable": {
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "https://graph.microsoft.com/v1.0/users/@{items('Disable_Users')?['id']}",
+                    "method": "PATCH",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": { "accountEnabled": false }
+                  },
+                  "runtimeConfiguration": {
+                    "contentTransfer": { "transferMode": "Chunked" }
+                  }
+                }
+              }
+            },
+
+            "Disable_Devices": {
+              "runAfter": { "Compose_DisabledDevicesPreview": [ "Succeeded" ] },
+              "type": "Foreach",
+              "foreach": "@outputs('Compose_DisabledDevicesPreview')",
+              "actions": {
+                "PATCH_Device_Disable": {
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "https://graph.microsoft.com/v1.0/devices/@{items('Disable_Devices')?['id']}",
+                    "method": "PATCH",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                      "Content-Type": "application/json"
+                    },
+                    "body": { "accountEnabled": false }
+                  },
+                  "runtimeConfiguration": {
+                    "contentTransfer": { "transferMode": "Chunked" }
+                  }
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "tenantId": { "value": "[parameters('tenantId')]" },
+          "clientId": { "value": "[parameters('clientId')]" },
+          "clientSecret": { "value": "[parameters('clientSecret')]" },
+          "userInactivityDays": { "value": "[parameters('userInactivityDays')]" },
+          "deviceInactivityDays": { "value": "[parameters('deviceInactivityDays')]" },
+          "excludedObjectIdsCsv": { "value": "[parameters('excludedObjectIdsCsv')]" }
+        }
+      }
+    }
+  ]
+}
