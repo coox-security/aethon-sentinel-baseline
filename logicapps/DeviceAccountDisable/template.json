@@ -6,6 +6,7 @@
       "type": "String",
       "defaultValue": "DeviceAccountDisable"
     },
+
     "tenantId": { "type": "String" },
     "clientId": { "type": "String" },
     "clientSecret": { "type": "SecureString" },
@@ -27,9 +28,22 @@
       "metadata": {
         "description": "Comma-separated list of Entra object IDs to exclude from disable actions (users/devices). Example: id1,id2,id3"
       }
+    },
+
+    "environment": {
+      "type": "String",
+      "defaultValue": "commercial",
+      "allowedValues": [ "commercial", "gcch" ],
+      "metadata": {
+        "description": "Controls Graph + Login endpoints. commercial=graph.microsoft.com/login.microsoftonline.com, gcch=graph.microsoft.us/login.microsoftonline.us"
+      }
     }
   },
-  "variables": {},
+  "variables": {
+    "graphHost": "[if(equals(parameters('environment'),'gcch'), 'graph.microsoft.us', 'graph.microsoft.com')]",
+    "loginHost": "[if(equals(parameters('environment'),'gcch'), 'login.microsoftonline.us', 'login.microsoftonline.com')]",
+    "graphScope": "[if(equals(parameters('environment'),'gcch'), 'https://graph.microsoft.us/.default', 'https://graph.microsoft.com/.default')]"
+  },
   "resources": [
     {
       "type": "Microsoft.Logic/workflows",
@@ -44,10 +58,14 @@
           "parameters": {
             "tenantId": { "type": "String", "defaultValue": "" },
             "clientId": { "type": "String", "defaultValue": "" },
-            "clientSecret": { "type": "String", "defaultValue": "" },
+            "clientSecret": { "type": "SecureString", "defaultValue": "" },
+
             "userInactivityDays": { "type": "Int", "defaultValue": 30 },
             "deviceInactivityDays": { "type": "Int", "defaultValue": 45 },
-            "excludedObjectIdsCsv": { "type": "String", "defaultValue": "" }
+
+            "excludedObjectIdsCsv": { "type": "String", "defaultValue": "" },
+
+            "environment": { "type": "String", "defaultValue": "commercial" }
           },
           "triggers": {
             "Recurrence": {
@@ -66,10 +84,30 @@
                   { "name": "clientId", "type": "string", "value": "@parameters('clientId')" },
                   { "name": "clientSecret", "type": "string", "value": "@parameters('clientSecret')" },
 
+                  { "name": "userInactivityDays", "type": "integer", "value": "@parameters('userInactivityDays')" },
+                  { "name": "deviceInactivityDays", "type": "integer", "value": "@parameters('deviceInactivityDays')" },
+
                   {
                     "name": "excludedObjectIds",
                     "type": "array",
-                    "value": "@if(or(equals(parameters('excludedObjectIdsCsv'), ''), empty(parameters('excludedObjectIdsCsv'))), createArray(), split(replace(parameters('excludedObjectIdsCsv'),' ',''), ','))"
+                    "value": "@if(or(equals(trim(parameters('excludedObjectIdsCsv')), ''), empty(trim(parameters('excludedObjectIdsCsv')))), createArray(''), split(replace(replace(trim(parameters('excludedObjectIdsCsv')),' ',''),'\\n',''), ','))"
+                  },
+
+                  { "name": "environment", "type": "string", "value": "@parameters('environment')" },
+                  {
+                    "name": "graphHost",
+                    "type": "string",
+                    "value": "@if(equals(toLower(parameters('environment')), 'gcch'), 'graph.microsoft.us', 'graph.microsoft.com')"
+                  },
+                  {
+                    "name": "loginHost",
+                    "type": "string",
+                    "value": "@if(equals(toLower(parameters('environment')), 'gcch'), 'login.microsoftonline.us', 'login.microsoftonline.com')"
+                  },
+                  {
+                    "name": "graphScope",
+                    "type": "string",
+                    "value": "@if(equals(toLower(parameters('environment')), 'gcch'), 'https://graph.microsoft.us/.default', 'https://graph.microsoft.com/.default')"
                   }
                 ]
               }
@@ -79,10 +117,10 @@
               "runAfter": { "Init_Variables": [ "Succeeded" ] },
               "type": "Http",
               "inputs": {
-                "uri": "https://login.microsoftonline.com/@{variables('tenantId')}/oauth2/v2.0/token",
+                "uri": "@{concat('https://', variables('loginHost'), '/', variables('tenantId'), '/oauth2/v2.0/token')}",
                 "method": "POST",
                 "headers": { "Content-Type": "application/x-www-form-urlencoded" },
-                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://graph.microsoft.com/.default"
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=@{encodeUriComponent(variables('graphScope'))}"
               }
             },
 
@@ -90,12 +128,15 @@
               "runAfter": { "Get_Token": [ "Succeeded" ] },
               "type": "Http",
               "inputs": {
-                "uri": "https://graph.microsoft.com/v1.0/users?$select=id,userPrincipalName,accountEnabled,signInActivity&$top=999",
+                "uri": "@{concat('https://', variables('graphHost'), '/v1.0/users?$select=id,userPrincipalName,accountEnabled,signInActivity&$top=999')}",
                 "method": "GET",
                 "headers": {
                   "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
                   "ConsistencyLevel": "eventual"
                 }
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": { "minimumItemCount": 1000 }
               }
             },
 
@@ -103,11 +144,15 @@
               "runAfter": { "Get_Token": [ "Succeeded" ] },
               "type": "Http",
               "inputs": {
-                "uri": "https://graph.microsoft.com/v1.0/devices?$select=id,accountEnabled,deviceName,approximateLastSignInDateTime&$top=999",
+                "uri": "@{concat('https://', variables('graphHost'), '/v1.0/devices?$select=id,accountEnabled,displayName,approximateLastSignInDateTime&$top=999')}",
                 "method": "GET",
                 "headers": {
-                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}"
+                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                  "ConsistencyLevel": "eventual"
                 }
+              },
+              "runtimeConfiguration": {
+                "paginationPolicy": { "minimumItemCount": 1000 }
               }
             },
 
@@ -115,8 +160,8 @@
               "runAfter": { "Get_Users": [ "Succeeded" ] },
               "type": "Query",
               "inputs": {
-                "from": "@body('Get_Users')?['value']",
-                "where": "@and(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['signInActivity']?['lastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, parameters('userInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
+                "from": "@coalesce(body('Get_Users')?['value'], createArray())",
+                "where": "@and(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['signInActivity']?['lastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, variables('userInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
               }
             },
 
@@ -124,8 +169,8 @@
               "runAfter": { "Get_Devices": [ "Succeeded" ] },
               "type": "Query",
               "inputs": {
-                "from": "@body('Get_Devices')?['value']",
-                "where": "@and(not(empty(item()?['approximateLastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['approximateLastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, parameters('deviceInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
+                "from": "@coalesce(body('Get_Devices')?['value'], createArray())",
+                "where": "@and(not(empty(item()?['approximateLastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['approximateLastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, variables('deviceInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
               }
             },
 
@@ -144,12 +189,12 @@
             "Disable_Users": {
               "runAfter": { "Compose_DisabledUsersPreview": [ "Succeeded" ] },
               "type": "Foreach",
-              "foreach": "@outputs('Compose_DisabledUsersPreview')",
+              "foreach": "@coalesce(outputs('Compose_DisabledUsersPreview'), createArray())",
               "actions": {
                 "PATCH_User_Disable": {
                   "type": "Http",
                   "inputs": {
-                    "uri": "https://graph.microsoft.com/v1.0/users/@{items('Disable_Users')?['id']}",
+                    "uri": "@{concat('https://', variables('graphHost'), '/v1.0/users/', items('Disable_Users')?['id'])}",
                     "method": "PATCH",
                     "headers": {
                       "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
@@ -167,12 +212,12 @@
             "Disable_Devices": {
               "runAfter": { "Compose_DisabledDevicesPreview": [ "Succeeded" ] },
               "type": "Foreach",
-              "foreach": "@outputs('Compose_DisabledDevicesPreview')",
+              "foreach": "@coalesce(outputs('Compose_DisabledDevicesPreview'), createArray())",
               "actions": {
                 "PATCH_Device_Disable": {
                   "type": "Http",
                   "inputs": {
-                    "uri": "https://graph.microsoft.com/v1.0/devices/@{items('Disable_Devices')?['id']}",
+                    "uri": "@{concat('https://', variables('graphHost'), '/v1.0/devices/', items('Disable_Devices')?['id'])}",
                     "method": "PATCH",
                     "headers": {
                       "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
@@ -193,9 +238,13 @@
           "tenantId": { "value": "[parameters('tenantId')]" },
           "clientId": { "value": "[parameters('clientId')]" },
           "clientSecret": { "value": "[parameters('clientSecret')]" },
+
           "userInactivityDays": { "value": "[parameters('userInactivityDays')]" },
           "deviceInactivityDays": { "value": "[parameters('deviceInactivityDays')]" },
-          "excludedObjectIdsCsv": { "value": "[parameters('excludedObjectIdsCsv')]" }
+
+          "excludedObjectIdsCsv": { "value": "[parameters('excludedObjectIdsCsv')]" },
+
+          "environment": { "value": "[parameters('environment')]" }
         }
       }
     }
