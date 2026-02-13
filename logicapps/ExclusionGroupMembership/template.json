@@ -120,7 +120,7 @@
             "For_each_group": {
               "runAfter": { "Select_Group_Objects": [ "Succeeded" ] },
               "type": "Foreach",
-              "foreach": "@outputs('Select_Group_Objects')",
+              "foreach": @body('Select_Group_Objects'),
               "actions": {
                 "Get_Group_Members": {
                   "type": "Http",
