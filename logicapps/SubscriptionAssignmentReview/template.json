@@ -1,1 +1,246 @@
-{}
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workflows_SubscriptionAssignmentReview_name": {
+      "type": "String",
+      "defaultValue": "SubscriptionAssignmentReview"
+    },
+    "connections_azureloganalyticsdatacollector_externalid": {
+      "type": "String",
+      "metadata": {
+        "description": "Resource ID of the existing azureloganalyticsdatacollector API connection (Microsoft.Web/connections/...)"
+      }
+    },
+    "tenantId": { "type": "String" },
+    "clientId": { "type": "String" },
+    "clientSecret": { "type": "SecureString" },
+    "subscriptionId": {
+      "type": "String",
+      "metadata": { "description": "Azure subscription ID to review role assignments for" }
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('workflows_SubscriptionAssignmentReview_name')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": { "defaultValue": {}, "type": "Object" },
+            "tenantId": { "defaultValue": "", "type": "String" },
+            "clientId": { "defaultValue": "", "type": "String" },
+            "clientSecret": { "defaultValue": "", "type": "String" },
+            "subscriptionId": { "defaultValue": "", "type": "String" }
+          },
+          "triggers": {
+            "Recurrence": {
+              "recurrence": { "interval": 1, "frequency": "Day" },
+              "evaluatedRecurrence": { "interval": 1, "frequency": "Day" },
+              "type": "Recurrence"
+            }
+          },
+          "actions": {
+            "Initialize_RunTimestamp": {
+              "runAfter": {},
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "RunTimestamp",
+                    "type": "String",
+                    "value": "@utcNow()"
+                  }
+                ]
+              }
+            },
+            "Set_variables": {
+              "runAfter": {
+                "Initialize_RunTimestamp": [ "Succeeded" ]
+              },
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  { "name": "tenantId", "type": "string", "value": "@parameters('tenantId')" },
+                  { "name": "clientId", "type": "string", "value": "@parameters('clientId')" },
+                  { "name": "clientSecret", "type": "string", "value": "@parameters('clientSecret')" },
+                  { "name": "subscriptionId", "type": "string", "value": "@parameters('subscriptionId')" }
+                ]
+              }
+            },
+            "Get_Graph_Token": {
+              "runAfter": { "Set_variables": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://login.microsoftonline.com/@{variables('tenantId')}/oauth2/v2.0/token",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://graph.microsoft.com/.default"
+              }
+            },
+            "Get_ARM_Token": {
+              "runAfter": { "Get_Graph_Token": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://login.microsoftonline.com/@{variables('tenantId')}/oauth2/v2.0/token",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://management.azure.com/.default"
+              }
+            },
+            "Call_ARM_API": {
+              "runAfter": { "Get_ARM_Token": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "@{concat('https://management.azure.com/subscriptions/', variables('subscriptionId'), '/providers/Microsoft.Authorization/roleAssignments?$filter=atScope()&api-version=2022-04-01')}",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_ARM_Token')?['access_token']}",
+                  "Content-Type": "application/json"
+                }
+              }
+            },
+            "Parse_JSON": {
+              "runAfter": { "Call_ARM_API": [ "Succeeded" ] },
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Call_ARM_API')?['value']",
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "properties": {
+                        "type": "object",
+                        "properties": {
+                          "principalId": { "type": "string" },
+                          "roleDefinitionId": { "type": "string" }
+                        },
+                        "required": [ "principalId", "roleDefinitionId" ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "For_each": {
+              "runAfter": { "Parse_JSON": [ "Succeeded" ] },
+              "type": "Foreach",
+              "foreach": "@body('Parse_JSON')",
+              "actions": {
+                "Get_User_UPN": {
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "https://graph.microsoft.com/v1.0/users/@{items('For_each')?['properties']?['principalId']}",
+                    "method": "GET",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_Graph_Token')?['access_token']}",
+                      "Content-Type": "application/json"
+                    }
+                  }
+                },
+                "Get_ServicePrincipal_DisplayName": {
+                  "runAfter": { "Get_User_UPN": [ "Succeeded", "Skipped", "Failed" ] },
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "https://graph.microsoft.com/v1.0/servicePrincipals/@{items('For_each')?['properties']?['principalId']}",
+                    "method": "GET",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_Graph_Token')?['access_token']}",
+                      "Content-Type": "application/json"
+                    }
+                  }
+                },
+                "Get_Group_DisplayName": {
+                  "runAfter": { "Get_ServicePrincipal_DisplayName": [ "Succeeded", "Skipped", "Failed" ] },
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "https://graph.microsoft.com/v1.0/groups/@{items('For_each')?['properties']?['principalId']}",
+                    "method": "GET",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_Graph_Token')?['access_token']}",
+                      "Content-Type": "application/json"
+                    }
+                  }
+                },
+                "Get_Role_Name": {
+                  "runAfter": { "Get_Group_DisplayName": [ "Succeeded", "Skipped", "Failed" ] },
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "@{concat('https://management.azure.com/subscriptions/', variables('subscriptionId'), '/providers/Microsoft.Authorization/roleDefinitions/', last(split(items('For_each')?['properties']?['roleDefinitionId'], '/')), '?api-version=2022-04-01')}",
+                    "method": "GET",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_ARM_Token')?['access_token']}",
+                      "Content-Type": "application/json"
+                    }
+                  }
+                },
+                "Compose_Record": {
+                  "runAfter": { "Get_Role_Name": [ "Succeeded", "Skipped", "Failed" ] },
+                  "type": "Compose",
+                  "inputs": {
+                    "principalId": "@{items('For_each')?['properties']?['principalId']}",
+                    "userOrServiceName": "@coalesce(body('Get_User_UPN')?['userPrincipalName'], body('Get_ServicePrincipal_DisplayName')?['displayName'], body('Get_Group_DisplayName')?['displayName'], 'unknown')",
+                    "type": "@{if(not(empty(body('Get_User_UPN')?['userPrincipalName'])), 'User', if(not(empty(body('Get_ServicePrincipal_DisplayName')?['displayName'])), 'ServicePrincipal', if(not(empty(body('Get_Group_DisplayName')?['displayName'])), 'Group', 'Unknown')))}",
+                    "roleDefinitionId": "@{items('For_each')?['properties']?['roleDefinitionId']}",
+                    "roleName": "@{body('Get_Role_Name')?['properties']?['roleName']}",
+                    "runTimestamp": "@{variables('RunTimestamp')}"
+                  }
+                },
+                "Wrap_Record_Array": {
+                  "runAfter": { "Compose_Record": [ "Succeeded" ] },
+                  "type": "Compose",
+                  "inputs": "@createArray(outputs('Compose_Record'))"
+                },
+                "Send_Data": {
+                  "runAfter": { "Wrap_Record_Array": [ "Succeeded" ] },
+                  "type": "ApiConnection",
+                  "inputs": {
+                    "host": {
+                      "connection": {
+                        "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                      }
+                    },
+                    "method": "post",
+                    "body": "@outputs('Wrap_Record_Array')",
+                    "headers": {
+                      "Log-Type": "SubscriptionRoleReview"
+                    },
+                    "path": "/api/logs"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": {
+          "$connections": {
+            "type": "Object",
+            "value": {
+              "azureloganalyticsdatacollector": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]",
+                "connectionId": "[parameters('connections_azureloganalyticsdatacollector_externalid')]",
+                "connectionName": "azureloganalyticsdatacollector"
+              }
+            }
+          },
+          "tenantId": { "value": "[parameters('tenantId')]" },
+          "clientId": { "value": "[parameters('clientId')]" },
+          "clientSecret": { "value": "[parameters('clientSecret')]" },
+          "subscriptionId": { "value": "[parameters('subscriptionId')]" }
+        }
+      }
+    }
+  ]
+}
