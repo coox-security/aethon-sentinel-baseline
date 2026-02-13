@@ -1,1 +1,219 @@
-{}
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workflows_ExclusionGroupMembership_name": {
+      "type": "String",
+      "defaultValue": "ExclusionGroupMembership"
+    },
+    "connections_azureloganalyticsdatacollector_externalid": {
+      "type": "String",
+      "metadata": {
+        "description": "Resource ID of the existing azureloganalyticsdatacollector API connection (Microsoft.Web/connections/...)"
+      }
+    },
+    "tenantId": { "type": "String" },
+    "clientId": { "type": "String" },
+    "clientSecret": { "type": "SecureString" },
+    "exclusionGroupsCsv": {
+      "type": "String",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Comma-separated list of group objectIds mapped to group names. Format: objectId=Group Name,objectId2=Group Name 2"
+      }
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('workflows_ExclusionGroupMembership_name')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": { "defaultValue": {}, "type": "Object" },
+            "tenantId": { "defaultValue": "", "type": "String" },
+            "clientId": { "defaultValue": "", "type": "String" },
+            "clientSecret": { "defaultValue": "", "type": "String" },
+            "exclusionGroupsCsv": { "defaultValue": "", "type": "String" }
+          },
+          "triggers": {
+            "Recurrence": {
+              "recurrence": { "frequency": "Day", "interval": 1 },
+              "evaluatedRecurrence": { "frequency": "Day", "interval": 1 },
+              "type": "Recurrence"
+            }
+          },
+          "actions": {
+            "Initialize_variables": {
+              "runAfter": {},
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  { "name": "CollectGroupMembers", "type": "array" },
+                  { "name": "tenantId", "type": "string", "value": "@parameters('tenantId')" },
+                  { "name": "clientId", "type": "string", "value": "@parameters('clientId')" },
+                  { "name": "clientSecret", "type": "string", "value": "@parameters('clientSecret')" }
+                ]
+              }
+            },
+            "Get_Token": {
+              "runAfter": { "Initialize_variables": [ "Succeeded" ] },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://login.microsoftonline.com/@{variables('tenantId')}/oauth2/v2.0/token",
+                "method": "POST",
+                "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://graph.microsoft.com/.default"
+              }
+            },
+            "Parse_Token": {
+              "runAfter": { "Get_Token": [ "Succeeded" ] },
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Get_Token')",
+                "schema": {
+                  "type": "object",
+                  "properties": { "access_token": { "type": "string" } },
+                  "required": [ "access_token" ]
+                }
+              }
+            },
+            "Compose_Access_Token": {
+              "runAfter": { "Parse_Token": [ "Succeeded" ] },
+              "type": "Compose",
+              "inputs": "@body('Parse_Token')?['access_token']"
+            },
+
+            "Compose_Group_Pairs": {
+              "runAfter": { "Compose_Access_Token": [ "Succeeded" ] },
+              "type": "Compose",
+              "inputs": "@split(replace(parameters('exclusionGroupsCsv'),'\\n',''),',')"
+            },
+
+            "Filter_NonEmpty_Pairs": {
+              "runAfter": { "Compose_Group_Pairs": [ "Succeeded" ] },
+              "type": "Query",
+              "inputs": {
+                "from": "@outputs('Compose_Group_Pairs')",
+                "where": "@and(not(empty(item())), contains(item(), '='))"
+              }
+            },
+
+            "Select_Group_Objects": {
+              "runAfter": { "Filter_NonEmpty_Pairs": [ "Succeeded" ] },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Filter_NonEmpty_Pairs')",
+                "select": {
+                  "GroupId": "@trim(first(split(item(),'=')))",
+                  "GroupName": "@trim(last(split(item(),'=')))"
+                }
+              }
+            },
+
+            "For_each_group": {
+              "runAfter": { "Select_Group_Objects": [ "Succeeded" ] },
+              "type": "Foreach",
+              "foreach": "@outputs('Select_Group_Objects')",
+              "actions": {
+                "Get_Group_Members": {
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "https://graph.microsoft.com/v1.0/groups/@{items('For_each_group')?['GroupId']}/members?$select=id,displayName,userPrincipalName,deviceId&$top=999",
+                    "method": "GET",
+                    "headers": {
+                      "Authorization": "Bearer @{outputs('Compose_Access_Token')}",
+                      "ConsistencyLevel": "eventual"
+                    }
+                  }
+                },
+                "For_each_member": {
+                  "runAfter": { "Get_Group_Members": [ "Succeeded" ] },
+                  "type": "Foreach",
+                  "foreach": "@body('Get_Group_Members')?['value']",
+                  "actions": {
+                    "Append_to_array_variable": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "CollectGroupMembers",
+                        "value": {
+                          "Id": "@{item()?['id']}",
+                          "DisplayName": "@{coalesce(item()?['displayName'],'')}",
+                          "UserPrincipalName": "@{coalesce(item()?['userPrincipalName'],'')}",
+                          "DeviceId": "@{coalesce(item()?['deviceId'],'')}",
+                          "ObjectType": "@{item()?['@odata.type']}",
+                          "GroupName": "@{items('For_each_group')?['GroupName']}",
+                          "GroupId": "@{items('For_each_group')?['GroupId']}",
+                          "TimeGenerated": "@{utcNow()}"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+
+            "Select_Output": {
+              "runAfter": { "For_each_group": [ "Succeeded", "TimedOut", "Failed", "Skipped" ] },
+              "type": "Select",
+              "inputs": {
+                "from": "@variables('CollectGroupMembers')",
+                "select": {
+                  "Id": "@item()?['Id']",
+                  "DisplayName": "@item()?['DisplayName']",
+                  "UserPrincipalName": "@item()?['UserPrincipalName']",
+                  "DeviceId": "@item()?['DeviceId']",
+                  "ObjectType": "@item()?['ObjectType']",
+                  "GroupName": "@item()?['GroupName']",
+                  "GroupId": "@item()?['GroupId']",
+                  "TimeGenerated": "@item()?['TimeGenerated']"
+                }
+              }
+            },
+
+            "Send_to_LAW": {
+              "runAfter": { "Select_Output": [ "Succeeded" ] },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": "@outputs('Select_Output')",
+                "headers": {
+                  "Log-Type": "GroupMembership"
+                },
+                "path": "/api/logs"
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "type": "Object",
+            "value": {
+              "azureloganalyticsdatacollector": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]",
+                "connectionId": "[parameters('connections_azureloganalyticsdatacollector_externalid')]",
+                "connectionName": "azureloganalyticsdatacollector"
+              }
+            }
+          },
+          "tenantId": { "value": "[parameters('tenantId')]" },
+          "clientId": { "value": "[parameters('clientId')]" },
+          "clientSecret": { "value": "[parameters('clientSecret')]" },
+          "exclusionGroupsCsv": { "value": "[parameters('exclusionGroupsCsv')]" }
+        }
+      }
+    }
+  ]
+}
