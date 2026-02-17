@@ -1,1 +1,206 @@
-{}
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workflows_InactiveUserAccounts_name": {
+      "type": "String",
+      "defaultValue": "InactiveUserAccounts"
+    },
+    "connections_azureloganalyticsdatacollector_externalid": {
+      "type": "String",
+      "metadata": {
+        "description": "Resource ID of the existing azureloganalyticsdatacollector API connection (Microsoft.Web/connections/...)"
+      }
+    },
+    "tenantId": {
+      "type": "String",
+      "metadata": { "description": "Entra tenant ID" }
+    },
+    "clientId": {
+      "type": "String",
+      "metadata": { "description": "App registration (client) ID" }
+    },
+    "clientSecret": {
+      "type": "SecureString",
+      "metadata": { "description": "App registration client secret value (secure)" }
+    },
+    "userInactivityDays": {
+      "type": "Int",
+      "defaultValue": 30,
+      "minValue": 1,
+      "metadata": { "description": "User inactivity threshold in days (lastSignInDateTime <= now - N days)" }
+    }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2017-07-01",
+      "name": "[parameters('workflows_InactiveUserAccounts_name')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            },
+            "tenantId": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "clientId": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "clientSecret": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "userInactivityDays": {
+              "defaultValue": 30,
+              "type": "Int"
+            }
+          },
+          "triggers": {
+            "Recurrence": {
+              "recurrence": {
+                "interval": 1,
+                "frequency": "Day"
+              },
+              "evaluatedRecurrence": {
+                "interval": 1,
+                "frequency": "Day"
+              },
+              "type": "Recurrence"
+            }
+          },
+          "actions": {
+            "Set_variables": {
+              "runAfter": {},
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "tenantId",
+                    "type": "string",
+                    "value": "@parameters('tenantId')"
+                  },
+                  {
+                    "name": "clientId",
+                    "type": "string",
+                    "value": "@parameters('clientId')"
+                  },
+                  {
+                    "name": "clientSecret",
+                    "type": "string",
+                    "value": "@parameters('clientSecret')"
+                  }
+                ]
+              }
+            },
+            "Get_Token": {
+              "runAfter": {
+                "Set_variables": ["Succeeded"]
+              },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://login.microsoftonline.us/@{variables('tenantId')}/oauth2/v2.0/token",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://graph.microsoft.us/.default"
+              }
+            },
+            "Get_Users": {
+              "runAfter": {
+                "Get_Token": ["Succeeded"]
+              },
+              "type": "Http",
+              "inputs": {
+                "uri": "https://graph.microsoft.us/v1.0/users?$select=id,displayName,userPrincipalName,accountEnabled,signInActivity&$top=999",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                  "ConsistencyLevel": "eventual"
+                }
+              }
+            },
+            "Filter_StaleUsers": {
+              "runAfter": {
+                "Get_Users": ["Succeeded"]
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_Users')?['value']",
+                "where": "@and(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['signInActivity']?['lastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, parameters('userInactivityDays'))))))"
+              }
+            },
+            "Flatten_Users": {
+              "runAfter": {
+                "Filter_StaleUsers": ["Succeeded"]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Filter_StaleUsers')",
+                "select": {
+                  "displayName": "@coalesce(item()?['displayName'],'')",
+                  "userPrincipalName": "@coalesce(item()?['userPrincipalName'],'')",
+                  "accountEnabled": "@item()?['accountEnabled']",
+                  "lastSignInDateTime": "@item()?['signInActivity']?['lastSignInDateTime']"
+                }
+              }
+            },
+            "Send_Data": {
+              "runAfter": {
+                "Flatten_Users": ["Succeeded"]
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": "@outputs('Flatten_Users')",
+                "headers": {
+                  "Log-Type": "InactiveUserAccounts"
+                },
+                "path": "/api/logs"
+              }
+            }
+          }
+        },
+        "parameters": {
+          "$connections": {
+            "type": "Object",
+            "value": {
+              "azureloganalyticsdatacollector": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]",
+                "connectionId": "[parameters('connections_azureloganalyticsdatacollector_externalid')]",
+                "connectionName": "azureloganalyticsdatacollector"
+              }
+            }
+          },
+          "tenantId": {
+            "value": "[parameters('tenantId')]"
+          },
+          "clientId": {
+            "value": "[parameters('clientId')]"
+          },
+          "clientSecret": {
+            "value": "[parameters('clientSecret')]"
+          },
+          "userInactivityDays": {
+            "value": "[parameters('userInactivityDays')]"
+          }
+        }
+      }
+    }
+  ]
+}
