@@ -5,7 +5,7 @@
       "templatePath": "logicapps/DeviceAccountDisable/templateGCCH.json"
     },
     {
-      "name": "EntrInactiveDevices",
+      "name": "EntraInactiveDevices",
       "templatePath": "logicapps/EntrInactiveDevices/templateGCCH.json"
     },
     {
