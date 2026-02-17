@@ -157,10 +157,78 @@
                           "model": { "type": [ "string", "null" ] },
                           "manufacturer": { "type": [ "string", "null" ] },
                           "operatingSystem": { "type": [ "string", "null" ] },
-                          "osVersion":I’m ready to keep going, but I need to stop **right here** for correctness.
-
-### ⚠️ Important
-The JSON you pasted **cuts off mid‑property** at:
-
-```json
-"osVersion":
+                          "osVersion": { "type": [ "string", "null" ] },
+                          "complianceState": { "type": [ "string", "null" ] },
+                          "lastSyncDateTime": { "type": [ "string", "null" ] },
+                          "serialNumber": { "type": [ "string", "null" ] }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Select": {
+              "runAfter": {
+                "Parse_JSON": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Parse_JSON')?['value']",
+                "select": {
+                  "DeviceId": "@coalesce(item()?['id'],'')",
+                  "DeviceName": "@coalesce(item()?['deviceName'],'')",
+                  "UserPrincipal": "@coalesce(item()?['userPrincipalName'],'')",
+                  "OS": "@coalesce(item()?['operatingSystem'],'')",
+                  "OSVersion": "@coalesce(item()?['osVersion'],'')",
+                  "Compliance": "@coalesce(item()?['complianceState'],'')",
+                  "LastSync": "@item()?['lastSyncDateTime']",
+                  "SerialNumber": "@coalesce(item()?['serialNumber'],'')"
+                }
+              }
+            },
+            "Send_Data": {
+              "runAfter": {
+                "Select": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "body": "@outputs('Select')",
+                "headers": {
+                  "Log-Type": "IntuneDevices"
+                },
+                "path": "/api/logs"
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "type": "Object",
+            "value": {
+              "azureloganalyticsdatacollector": {
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]",
+                "connectionId": "[parameters('connections_azureloganalyticsdatacollector_externalid')]",
+                "connectionName": "azureloganalyticsdatacollector"
+              }
+            }
+          },
+          "tenantId": { "value": "[parameters('tenantId')]" },
+          "clientId": { "value": "[parameters('clientId')]" },
+          "clientSecret": { "value": "[parameters('clientSecret')]" }
+        }
+      }
+    }
+  ]
+}
