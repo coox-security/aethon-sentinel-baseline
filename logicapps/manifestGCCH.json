@@ -6,7 +6,7 @@
     },
     {
       "name": "EntraInactiveDevices",
-      "templatePath": "logicapps/EntrInactiveDevices/templateGCCH.json"
+      "templatePath": "logicapps/EntraInactiveDevices/templateGCCH.json"
     },
     {
       "name": "ExclusionGroupMembership",
