@@ -161,7 +161,7 @@
               "type": "Query",
               "inputs": {
                 "from": "@coalesce(body('Get_Users')?['value'], createArray())",
-                "where": "@and(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['signInActivity']?['lastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, variables('userInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
+                "where": "@and(or(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), not(empty(item()?['signInActivity']?['lastNonInteractiveSignInDateTime']))), lessOrEquals(if(greater(ticks(parseDateTime(if(empty(item()?['signInActivity']?['lastSignInDateTime']), '0001-01-01T00:00:00Z', item()?['signInActivity']?['lastSignInDateTime']))), ticks(parseDateTime(if(empty(item()?['signInActivity']?['lastNonInteractiveSignInDateTime']), '0001-01-01T00:00:00Z', item()?['signInActivity']?['lastNonInteractiveSignInDateTime'])))), ticks(parseDateTime(if(empty(item()?['signInActivity']?['lastSignInDateTime']), '0001-01-01T00:00:00Z', item()?['signInActivity']?['lastSignInDateTime']))), ticks(parseDateTime(if(empty(item()?['signInActivity']?['lastNonInteractiveSignInDateTime']), '0001-01-01T00:00:00Z', item()?['signInActivity']?['lastNonInteractiveSignInDateTime'])))), ticks(addDays(utcNow(), mul(-1, variables('userInactivityDays'))))), not(contains(concat('|', join(variables('excludedObjectIds'),'|'), '|'), concat('|', item()?['id'], '|'))))"
               }
             },
 
