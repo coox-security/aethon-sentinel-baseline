@@ -1,0 +1,327 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Insider Risk – User Activity Investigation (Client-Ready)\n\nEnter a **UPN** and **TimeRange**. The workbook derives the **internal email domain** from the UPN automatically (so it works for any client tenant).\n\n**Severity scoring:** Each section contributes to an overall **0–100 risk score** using weighted signals (attachments, removable media, downloads, risky sign-ins, etc.).\n\n**How to use:** Start with the score, then pivot into the detail tables to validate context (role/expected behavior) and identify any *clusters* of activity (downloads + external email + USB + risky sign-ins)."
+      },
+      "name": "Title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "name": "UPN",
+            "type": 1,
+            "isRequired": true,
+            "description": "User Principal Name (e.g. user@customer.com)",
+            "value": "",
+            "id": "074400ec-c4cb-4cd0-8117-43c2f8e94a0b"
+          },
+          {
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 2592000000
+            },
+            "id": "8a5f1f27-bad7-4228-8c86-18c802d99aed"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "Parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Overall Risk Score\nThis is a weighted roll-up across the signals below. Use it as a **triage compass**, not a courtroom verdict.\n\n**What it reveals:** Whether the user’s activity trends toward common exfil patterns (external send, bulk downloads, USB copy, risky sign-ins).\n\n**What’s “interesting”:** Sudden spikes vs baseline, or multiple signals clustered together (e.g., SharePoint downloads **and** USB copy **and** external attachments).\n\n**Analyst tip:** A low score means “no obvious high-volume indicators in this window,” not “nothing happened.” Always check the detail tables when context suggests risk."
+      },
+      "name": "RiskScoreText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nlet InternalDomain = tostring(split(UserUPN,'@')[1]);\n// --- Email: external recipients count\nlet ExtMail = toscalar(\n    EmailEvents\n    | where SenderFromAddress == UserUPN\n    | extend RecipientDomain = tostring(split(RecipientEmailAddress,'@')[1])\n    | where isnotempty(RecipientDomain) and RecipientDomain !~ InternalDomain\n    | summarize c=count()\n);\n// --- Email: external attachments count\nlet ExtAttach = toscalar(\n    EmailAttachmentInfo\n    | join kind=inner (\n        EmailEvents\n        | where SenderFromAddress == UserUPN\n    ) on NetworkMessageId\n    | extend RecipientDomain = tostring(split(RecipientEmailAddress,'@')[1])\n    | where isnotempty(RecipientDomain) and RecipientDomain !~ InternalDomain\n    | summarize c=count()\n);\n// --- SharePoint/OneDrive downloads (OfficeActivity schema-safe)\nlet SPDownloads = toscalar(\n    OfficeActivity\n    | where UserId == UserUPN\n    | extend WorkloadNorm = tostring(column_ifexists(\"OfficeWorkload\", column_ifexists(\"Workload\",\"\")))\n    | where WorkloadNorm in (\"SharePoint\",\"OneDrive\")\n    | summarize c=countif(Operation in (\"FileDownloaded\",\"FileSyncDownloadedFull\",\"FileSyncDownloadedPartial\"))\n);\n// --- Endpoint: local file creation proxy\nlet DeviceDownloads = toscalar(\n    DeviceFileEvents\n    | where InitiatingProcessAccountUpn == UserUPN\n    | where ActionType == \"FileCreated\"\n    | where FolderPath has_any (\"\\\\Downloads\\\\\",\"\\\\Desktop\\\\\",\"\\\\Documents\\\\\")\n    | summarize c=count()\n);\n// --- Endpoint: USB copy proxy\nlet UsbCopy = toscalar(\n    DeviceEvents\n    | where InitiatingProcessAccountUpn == UserUPN\n    | where ActionType in (\"UsbDriveFileCopied\",\"UsbDriveMounted\")\n    | summarize c=countif(ActionType == \"UsbDriveFileCopied\")\n);\n// --- Identity: unique IPs (schema-safe for UPN column)\nlet NewIPs = toscalar(\n    SigninLogs\n    | extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"Identity\",\"\")))\n    | where UPNNorm == UserUPN\n    | where tobool(column_ifexists(\"IsInteractive\", true)) == true\n    | summarize c=dcount(tostring(column_ifexists(\"IPAddress\", column_ifexists(\"IpAddress\",\"\"))))\n);\n// --- Identity: risky/failed sign-ins (schema-safe)\nlet RiskyOrFailed = toscalar(\n    SigninLogs\n    | extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"Identity\",\"\")))\n    | extend ResultTypeNorm = toint(column_ifexists(\"ResultType\", 0))\n    | extend RiskStateNorm  = tostring(column_ifexists(\"RiskState\", \"none\"))\n    | extend CAStatusNorm   = tostring(column_ifexists(\"ConditionalAccessStatus\", \"\"))\n    | where UPNNorm == UserUPN\n    | where ResultTypeNorm != 0\n        or RiskStateNorm != \"none\"\n        or CAStatusNorm has_any (\"failure\",\"Failure\")\n    | summarize c=count()\n);\n// --- Cloud app activity (schema-safe)\nlet CloudApp = toscalar(\n    CloudAppEvents\n    | extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"AccountDisplayName\",\"\")))\n    | where UPNNorm == UserUPN\n    | summarize c=count()\n);\n// --- Scoring\nlet Score_ExtMail = case(ExtMail >= 200, 100, ExtMail >= 50, 80, ExtMail >= 20, 60, ExtMail >= 6, 40, ExtMail >= 1, 20, 0);\nlet Score_ExtAttach = case(ExtAttach >= 50, 100, ExtAttach >= 20, 85, ExtAttach >= 6, 65, ExtAttach >= 1, 45, 0);\nlet Score_SPDownloads = case(SPDownloads >= 200, 100, SPDownloads >= 50, 80, SPDownloads >= 20, 60, SPDownloads >= 6, 40, SPDownloads >= 1, 20, 0);\nlet Score_DeviceDownloads = case(DeviceDownloads >= 500, 100, DeviceDownloads >= 200, 80, DeviceDownloads >= 50, 60, DeviceDownloads >= 10, 40, DeviceDownloads >= 1, 20, 0);\nlet Score_UsbCopy = case(UsbCopy >= 50, 100, UsbCopy >= 20, 85, UsbCopy >= 6, 65, UsbCopy >= 1, 55, 0);\nlet Score_NewIPs = case(NewIPs >= 20, 100, NewIPs >= 10, 75, NewIPs >= 5, 55, NewIPs >= 2, 35, NewIPs >= 1, 20, 0);\nlet Score_RiskyOrFailed = case(RiskyOrFailed >= 50, 100, RiskyOrFailed >= 20, 80, RiskyOrFailed >= 6, 60, RiskyOrFailed >= 1, 40, 0);\nlet Score_CloudApp = case(CloudApp >= 2000, 100, CloudApp >= 500, 75, CloudApp >= 200, 55, CloudApp >= 50, 35, CloudApp >= 1, 20, 0);\nlet OverallRiskScore = toint(round(\n      0.05 * Score_ExtMail\n    + 0.25 * Score_ExtAttach\n    + 0.15 * Score_SPDownloads\n    + 0.10 * Score_DeviceDownloads\n    + 0.20 * Score_UsbCopy\n    + 0.10 * Score_NewIPs\n    + 0.10 * Score_RiskyOrFailed\n    + 0.05 * Score_CloudApp\n, 0));\nlet RiskBand = case(OverallRiskScore >= 75, \"High\", OverallRiskScore >= 40, \"Medium\", \"Low\");\nprint\n    OverallRiskScore=OverallRiskScore,\n    RiskBand=RiskBand,\n    Score_ExtMail=Score_ExtMail,\n    Score_ExtAttach=Score_ExtAttach,\n    Score_SPDownloads=Score_SPDownloads,\n    Score_DeviceDownloads=Score_DeviceDownloads,\n    Score_UsbCopy=Score_UsbCopy,\n    Score_NewIPs=Score_NewIPs,\n    Score_RiskyOrFailed=Score_RiskyOrFailed,\n    Score_CloudApp=Score_CloudApp",
+        "size": 4,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "tiles",
+        "tileSettings": {
+          "showBorder": false,
+          "titleContent": {
+            "columnMatch": "RiskBand",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "OverallRiskScore",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "auto"
+            },
+            "numberFormat": {
+              "unit": 17,
+              "options": {
+                "maximumSignificantDigits": 3,
+                "maximumFractionDigits": 2
+              }
+            }
+          }
+        }
+      },
+      "name": "Overall Risk Score (0–100)"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Email: External Recipients (Derived Internal Domain)\nExternal = any recipient whose domain differs from the UPN’s domain.\n\n**What it reveals:** Who the user sent mail to outside the tenant and how often.\n\n**What’s “interesting”:**\n- New or unusual recipients/domains (esp. personal webmail or non-business domains)\n- High-volume sending to a single external address/domain\n- Activity that coincides with downloads/USB activity\n\n**Follow-ups:** Validate business justification, check whether external sending is expected for the role, and pivot to attachments below."
+      },
+      "name": "ExternalEmailText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nlet InternalDomain = tostring(split(UserUPN,'@')[1]);\nEmailEvents\n| where SenderFromAddress == UserUPN\n| extend RecipientDomain = tostring(split(RecipientEmailAddress,'@')[1])\n| where isnotempty(RecipientDomain) and RecipientDomain !~ InternalDomain\n| summarize EmailCount=count() by RecipientEmailAddress, RecipientDomain\n| extend SeverityScore = case(EmailCount>=50,100, EmailCount>=20,80, EmailCount>=6,50, EmailCount>=1,20, 0)\n| order by SeverityScore desc, EmailCount desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "External Email Recipients"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Email: External Emails With Attachments\nAttachments are a common exfil vehicle.\n\n**What it reveals:** External recipients who received attachments from the user (and file names when available).\n\n**What’s “interesting”:**\n- Archives (zip/7z/rar), encrypted containers, password-protected files\n- Large bursts of attachment sending, or repeated sends to the same recipient\n- File names suggesting data exports (\"export\", \"customers\", \"hr\", \"finance\", \"backup\", etc.)\n\n**Follow-ups:** Compare timestamps with SharePoint/OneDrive downloads and USB copy events. If available, pivot to DLP alerts and mailbox audit."
+      },
+      "name": "ExternalEmailAttachText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nlet InternalDomain = tostring(split(UserUPN,'@')[1]);\nEmailAttachmentInfo\n| join kind=inner (\n    EmailEvents\n    | where SenderFromAddress == UserUPN\n) on NetworkMessageId\n| extend RecipientDomain = tostring(split(RecipientEmailAddress,'@')[1])\n| where isnotempty(RecipientDomain) and RecipientDomain !~ InternalDomain\n| summarize Attachments=count(), Files=make_set(FileName, 50) by RecipientEmailAddress, RecipientDomain\n| extend SeverityScore = case(Attachments>=20,100, Attachments>=6,75, Attachments>=1,55, 0)\n| order by SeverityScore desc, Attachments desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "External Emails With Attachments"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## SharePoint / OneDrive Access\nFocuses on access + download operations commonly relevant during data exfil investigations.\n\n**What it reveals:** Which sites the user touched and whether downloads occurred.\n\n**What’s “interesting”:**\n- High download counts, especially across many sites\n- Access to sites the user doesn’t normally use (executive, HR, finance, legal)\n- Spikes shortly before termination/resignation or after privilege changes\n\n**Follow-ups:** Pivot to the download detail table below and correlate with endpoint file creation / USB activity."
+      },
+      "name": "SPText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nOfficeActivity\n| where UserId == UserUPN\n| extend WorkloadNorm = tostring(column_ifexists(\"OfficeWorkload\", column_ifexists(\"Workload\",\"\")))\n| extend SiteUrlNorm  = tostring(column_ifexists(\"Site_Url\", column_ifexists(\"SiteUrl\",\"\")))\n| where WorkloadNorm in (\"SharePoint\",\"OneDrive\")\n| summarize\n    AccessCount = count(),\n    Downloads   = countif(Operation in (\"FileDownloaded\",\"FileSyncDownloadedFull\",\"FileSyncDownloadedPartial\")),\n    Files       = dcount(SourceFileName)\n  by SiteUrlNorm, WorkloadNorm\n| extend SeverityScore = case(\n    Downloads>=50,100,\n    Downloads>=20,80,\n    Downloads>=6,60,\n    Downloads>=1,40,\n    AccessCount>=20,25,\n    AccessCount>=1,10,\n    0\n)\n| order by SeverityScore desc, Downloads desc, AccessCount desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "SharePoint / OneDrive Sites Accessed"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## SharePoint / OneDrive File Download Events (Detail)\nThis is the event-level view of downloads.\n\n**What it reveals:** Exact timestamps, site context, and client IP for user downloads.\n\n**What’s “interesting”:**\n- Large bursts of downloads in a short time window\n- Downloads from unusual IPs or locations (compare to Sign-in section)\n- Repeated downloads of the same file (could indicate sync tooling, or could indicate intentional retries)\n\n**Follow-ups:** Cross-check endpoint file-creation and USB copy timing. If available, review the device name and whether the device is managed/compliant."
+      },
+      "name": "SPDownloadsDetailText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nOfficeActivity\n| where UserId == UserUPN\n| extend WorkloadNorm = tostring(column_ifexists(\"OfficeWorkload\", column_ifexists(\"Workload\",\"\")))\n| extend SiteUrlNorm  = tostring(column_ifexists(\"Site_Url\", column_ifexists(\"SiteUrl\",\"\")))\n| extend ClientIPNorm = tostring(column_ifexists(\"ClientIP\", column_ifexists(\"ClientIp\",\"\")))\n| where WorkloadNorm in (\"SharePoint\",\"OneDrive\")\n| where Operation in (\"FileDownloaded\",\"FileSyncDownloadedFull\",\"FileSyncDownloadedPartial\")\n| project\n    TimeGenerated,\n    Workload = WorkloadNorm,\n    Operation,\n    Site_Url = SiteUrlNorm,\n    SourceFileName,\n    ClientIP = ClientIPNorm\n| order by TimeGenerated desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "SharePoint / OneDrive File Download Events (Detail)"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Endpoint: Local File Creation (Proxy for Downloads / Collection)\nThis flags files created in common user collection paths (Downloads/Desktop/Documents).\n\n**What it reveals:** Which devices are generating new files in typical staging locations.\n\n**What’s “interesting”:**\n- High file creation volume, especially across multiple devices\n- File creation that aligns closely with SharePoint/OneDrive downloads\n- Lots of created files with archive extensions (zip/7z/rar) or exports (csv/xlsx)\n\n**Follow-ups:** Pivot to the detail table to review filenames, hashes, and initiating process."
+      },
+      "name": "EndpointText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nDeviceFileEvents\n| where InitiatingProcessAccountUpn == UserUPN\n| where ActionType == \"FileCreated\"\n| where FolderPath has_any (\"\\\\Downloads\\\\\",\"\\\\Desktop\\\\\",\"\\\\Documents\\\\\")\n| summarize FileCreates=count(), DistinctFiles=dcount(FileName), Paths=dcount(FolderPath) by DeviceName\n| extend SeverityScore = case(FileCreates>=500,100, FileCreates>=200,80, FileCreates>=50,60, FileCreates>=10,40, FileCreates>=1,20, 0)\n| order by SeverityScore desc, FileCreates desc",
+        "size": 1,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Files Created in User Collection Paths"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Endpoint: Recent Created Files (Detail)\nEvent-level view of the files created in typical collection paths.\n\n**What it reveals:** Filenames, hashes (when available), and the initiating process responsible.\n\n**What’s “interesting”:**\n- Repeated creation of archives or exports\n- Suspicious tooling (compression utilities, scripting engines, unusual binaries)\n- High volume shortly after cloud downloads or before USB copy activity\n\n**Follow-ups:** If hashes exist, pivot to threat intel / reputation. If initiating process is suspicious, pivot to process tree and device timeline."
+      },
+      "name": "EndpointDetailText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nDeviceFileEvents\n| where InitiatingProcessAccountUpn == UserUPN\n| where ActionType == \"FileCreated\"\n| where FolderPath has_any (\"\\\\Downloads\\\\\",\"\\\\Desktop\\\\\",\"\\\\Documents\\\\\")\n| project TimeGenerated, DeviceName, FileName, FolderPath, SHA256, InitiatingProcessFileName\n| order by TimeGenerated desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Recent Created Files (Detail)"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Endpoint: Removable Media\nMount events are interesting; copy-to-USB is *much* more interesting.\n\n**What it reveals:** Whether the user mounted removable drives and/or copied files to them.\n\n**What’s “interesting”:**\n- Any USB copy activity in a locked-down environment\n- High copy counts, repeated mounts, or activity outside normal hours\n- USB activity that lines up with cloud download bursts or local file staging\n\n**Follow-ups:** Pivot to the detail table to inspect `AdditionalFields` for drive identifiers or file indicators (when present)."
+      },
+      "name": "USBText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nDeviceEvents\n| where InitiatingProcessAccountUpn == UserUPN\n| where ActionType in (\"UsbDriveMounted\",\"UsbDriveFileCopied\")\n| summarize Mounted=countif(ActionType==\"UsbDriveMounted\"), Copied=countif(ActionType==\"UsbDriveFileCopied\") by DeviceName\n| extend SeverityScore = case(Copied>=50,100, Copied>=20,85, Copied>=6,65, Copied>=1,55, Mounted>=5,25, Mounted>=1,10, 0)\n| order by SeverityScore desc, Copied desc, Mounted desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Removable Media Usage Summary"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Endpoint: Removable Media Events (Detail)\nEvent-level view of USB mounts and file copy events.\n\n**What it reveals:** Exact timestamps and raw additional fields for deeper inspection.\n\n**What’s “interesting”:**\n- Copy events (not just mounts)\n- Repeated mounts/copies across multiple devices\n- Activity that matches a spike in file staging or cloud downloads\n\n**Follow-ups:** If your environment supports it, correlate with device control policies and any endpoint DLP/device control events."
+      },
+      "name": "USBDetailText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nDeviceEvents\n| where InitiatingProcessAccountUpn == UserUPN\n| where ActionType in (\"UsbDriveMounted\",\"UsbDriveFileCopied\")\n| project TimeGenerated, DeviceName, ActionType, AdditionalFields\n| order by TimeGenerated desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Removable Media Events (Detail)"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Identity: Interactive Sign-ins (New / Unusual Signals)\nSummarizes interactive sign-in IP diversity and highlights risky/failed sign-ins.\n\n**What it reveals:** Where the user is signing in from, which apps they’re hitting, and whether controls failed or risk was flagged.\n\n**What’s “interesting”:**\n- New IPs/locations (especially if the user is not expected to travel)\n- Sign-ins from unmanaged devices or unusual clients\n- Conditional Access failures, MFA anomalies, or elevated risk levels\n\n**Follow-ups:** Compare IPs to VPN/named locations, review Conditional Access policy results, and correlate with spikes in downloads or external email."
+      },
+      "name": "SigninText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nSigninLogs\n| extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"Identity\",\"\")))\n| extend IPNorm  = tostring(column_ifexists(\"IPAddress\", column_ifexists(\"IpAddress\",\"\")))\n| extend LocationNorm = tostring(column_ifexists(\"Location\", \"\"))\n| where UPNNorm == UserUPN\n| where tobool(column_ifexists(\"IsInteractive\", true)) == true\n| summarize FirstSeen=min(TimeGenerated), LastSeen=max(TimeGenerated), SignInCount=count() by IPAddress=IPNorm, Location=LocationNorm, AppDisplayName\n| extend SeverityScore = case(SignInCount>=25,70, SignInCount>=10,55, SignInCount>=2,35, 20)\n| order by LastSeen desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Interactive Sign-ins – IP Diversity"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Identity: Risky or Failed Sign-ins\nFocuses on failed sign-ins, risky sign-ins, and Conditional Access failures.\n\n**What it reveals:** Authentication issues and risk flags (risk state/level, CA status, result type).\n\n**What’s “interesting”:**\n- ResultType != 0 (actual failures)\n- Conditional Access failures (policy blocks or unmet requirements)\n- RiskState/RiskLevelAggregated elevated or not `none`\n\n**Follow-ups:** Inspect the sign-in record’s Conditional Access policy results, device details, and IP/location. Confirm whether the user was on VPN/trusted named location at the time."
+      },
+      "name": "RiskySigninText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nSigninLogs\n| extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"Identity\",\"\")))\n| extend IPNorm  = tostring(column_ifexists(\"IPAddress\", column_ifexists(\"IpAddress\",\"\")))\n| extend LocationNorm = tostring(column_ifexists(\"Location\", \"\"))\n| extend ResultTypeNorm = toint(column_ifexists(\"ResultType\", 0))\n| extend RiskStateNorm  = tostring(column_ifexists(\"RiskState\", \"none\"))\n| extend RiskLevelAggNorm = tostring(column_ifexists(\"RiskLevelAggregated\", \"\"))\n| extend CAStatusNorm   = tostring(column_ifexists(\"ConditionalAccessStatus\", \"\"))\n| where UPNNorm == UserUPN\n| where ResultTypeNorm != 0 or RiskStateNorm != \"none\" or CAStatusNorm has_any (\"failure\",\"Failure\")\n| extend SeverityScore = case(RiskLevelAggNorm =~ \"high\",100, RiskLevelAggNorm =~ \"medium\",80, RiskLevelAggNorm =~ \"low\",60, ResultTypeNorm != 0,50, 40)\n| project TimeGenerated, IPAddress=IPNorm, Location=LocationNorm, AppDisplayName, ResultType=ResultTypeNorm, RiskState=RiskStateNorm, RiskLevelAggregated=RiskLevelAggNorm, ConditionalAccessStatus=CAStatusNorm, SeverityScore\n| order by SeverityScore desc, TimeGenerated desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Risky or Failed Sign-ins"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Cloud App Activity (CAS)\nUseful when Defender for Cloud Apps logs are present.\n\n**What it reveals:** User activity across cloud apps, including action types and IP diversity.\n\n**What’s “interesting”:**\n- Sudden spike in events or many distinct IPs\n- Unfamiliar apps, risky action types (downloads, sharing, uploads, admin actions)\n- Activity that aligns with suspicious sign-ins or data staging signals\n\n**Follow-ups:** Pivot to the event-level detail table. Validate whether the app is sanctioned and whether the user is expected to access it."
+      },
+      "name": "CloudAppText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nCloudAppEvents\n| extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"UserId\", column_ifexists(\"AccountId\",\"\"))))\n| where UPNNorm == UserUPN\n| extend AppNameNorm = tostring(column_ifexists(\"AppName\", column_ifexists(\"Application\",\"\")))\n| extend ActionTypeNorm = tostring(column_ifexists(\"ActionType\", column_ifexists(\"ActivityType\",\"\")))\n| extend IPNorm = tostring(column_ifexists(\"IPAddress\", column_ifexists(\"IpAddress\", column_ifexists(\"ClientIP\",\"\"))))\n| summarize\n    Events  = count(),\n    Apps    = dcount(AppNameNorm),\n    Actions = dcount(ActionTypeNorm),\n    IPs     = dcount(IPNorm)\n  by UserPrincipalName = UPNNorm\n| extend SeverityScore = case(\n    Events>=2000,100,\n    Events>=500,75,\n    Events>=200,55,\n    Events>=50,35,\n    Events>=1,20,\n    0\n)\n| project UserPrincipalName, Events, Apps, Actions, IPs, SeverityScore",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Cloud App Events (Summary)"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Cloud App Events (Detail)\nEvent-level view for investigation and timeline correlation.\n\n**What it reveals:** Exact app/action/IP/device/user agent per event.\n\n**What’s “interesting”:**\n- User agents or device types that don’t match expected posture\n- Unusual IPs compared to Sign-in section\n- Repeated high-risk actions clustered in time\n\n**Follow-ups:** If an app looks suspicious, validate sanctioned/unsanctioned status, review session controls, and correlate with other exfil signals."
+      },
+      "name": "CloudAppDetailText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nCloudAppEvents\n| extend UPNNorm = tostring(column_ifexists(\"UserPrincipalName\", column_ifexists(\"UserId\", column_ifexists(\"AccountId\",\"\"))))\n| extend AppNameNorm = tostring(column_ifexists(\"AppName\", column_ifexists(\"Application\",\"\")))\n| extend ActionTypeNorm = tostring(column_ifexists(\"ActionType\", column_ifexists(\"ActivityType\",\"\")))\n| extend IPNorm = tostring(column_ifexists(\"IPAddress\", column_ifexists(\"IpAddress\", column_ifexists(\"ClientIP\",\"\"))))\n| extend DeviceTypeNorm = tostring(column_ifexists(\"DeviceType\", column_ifexists(\"Device\",\"\")))\n| extend UserAgentNorm = tostring(column_ifexists(\"UserAgent\", column_ifexists(\"UserAgentString\",\"\")))\n| where UPNNorm == UserUPN\n| project\n    TimeGenerated,\n    AppName = AppNameNorm,\n    ActionType = ActionTypeNorm,\n    IPAddress = IPNorm,\n    DeviceType = DeviceTypeNorm,\n    UserAgent = UserAgentNorm\n| order by TimeGenerated desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Cloud App Events (Detail)"
+    }
+  ],
+  "fallbackResourceIds": [
+    "/subscriptions/4f0f6e61-d100-4915-9db2-fc13cdf48bde/resourcegroups/asccomcyberteam/providers/microsoft.operationalinsights/workspaces/asc-global-cloud"
+  ],
+  "fromTemplateId": "sentinel-UserWorkbook",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
