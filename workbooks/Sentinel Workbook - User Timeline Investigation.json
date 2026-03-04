@@ -1,0 +1,73 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Insider Risk – **User Investigation Timeline** (Client-Ready)\n\nEnter a **UPN** and **TimeRange**. This workbook produces a single, unified timeline view across identity, cloud, email, endpoint, and removable media signals.\n\n**Goal:** give an analyst a fast “story of behavior” view (what happened, when, from where, and on what device) without having to pivot between five tables.\n\n**Use case:** investigations, insider risk triage, suspected account compromise with data staging/exfil indicators."
+      },
+      "name": "Title"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "name": "UPN",
+            "type": 1,
+            "isRequired": true,
+            "description": "User Principal Name (e.g. user@customer.com)",
+            "value": "aaron.russell@aethonsecurity.com",
+            "id": "3c59d2c6-8d67-4b9c-bc7c-30a7e3c08f7a"
+          },
+          {
+            "name": "TimeRange",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 2592000000
+            },
+            "id": "6b0d9c9b-1de0-4d2c-9e47-5d1f0a7f7b34"
+          }
+        ],
+        "style": "pills",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "name": "Parameters"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## How to read this timeline\nEach row is one event normalized into a common schema.\n\n**What it reveals:** A single “investigation storyboard” of the user’s activity across:\n- **Identity** (sign-ins / risky auth)\n- **SharePoint/OneDrive** (file download signals)\n- **Email** (external recipients + external attachments)\n- **Endpoint** (local file staging activity)\n- **Removable media** (USB mount/copy)\n- **CAS** (cloud app activity)\n\n**What’s interesting:** clustered sequences like **cloud download → local staging → USB copy → external email**, or sign-ins from unusual IPs followed by data access.\n\n**Analyst tip:** Sort by **SeverityScore** (desc) to see the spiciest rows first, then switch to time order to understand sequence."
+      },
+      "name": "IntroText"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let UserUPN = tostring('{UPN}');\nlet InternalDomain = tostring(split(UserUPN,'@')[1]);\n// --------------------------\n// Normalize helper values\n// --------------------------\nlet NowTs = now();\n\n// --------------------------\n// 1) Identity: Interactive sign-ins (summary-ish)\n// --------------------------\nlet T_Signins =\nSigninLogs\n| extend UPNNorm = tostring(column_ifexists('UserPrincipalName', column_ifexists('Identity','')))\n| where UPNNorm == UserUPN\n| where tobool(column_ifexists('IsInteractive', true)) == true\n| extend IPNorm = tostring(column_ifexists('IPAddress', column_ifexists('IpAddress','')))\n| extend LocationNorm = tostring(column_ifexists('Location', ''))\n| extend AppNorm = tostring(column_ifexists('AppDisplayName',''))\n| extend ResultTypeNorm = toint(column_ifexists('ResultType', 0))\n| extend CAStatusNorm = tostring(column_ifexists('ConditionalAccessStatus',''))\n| extend RiskStateNorm = tostring(column_ifexists('RiskState','none'))\n| extend RiskLevelAggNorm = tostring(column_ifexists('RiskLevelAggregated',''))\n| extend Action = iif(ResultTypeNorm == 0, 'Interactive Sign-in (Success)', 'Interactive Sign-in (Failure)')\n| extend Details = strcat('App=', AppNorm, '; CA=', CAStatusNorm, '; RiskState=', RiskStateNorm, '; RiskLevel=', RiskLevelAggNorm, '; ResultType=', tostring(ResultTypeNorm))\n| extend SeverityScore = case(\n    ResultTypeNorm != 0, 70,\n    RiskLevelAggNorm =~ 'high', 80,\n    RiskLevelAggNorm =~ 'medium', 65,\n    RiskStateNorm != 'none', 60,\n    CAStatusNorm has_any ('failure','Failure'), 60,\n    25\n)\n| project TimeGenerated, Source='SigninLogs', Category='Identity', Action, Details, IPAddress=IPNorm, DeviceName=tostring(column_ifexists('DeviceDetail','')), Workload='', Item='', SiteUrl='', Recipient='', SeverityScore;\n\n// --------------------------\n// 2) Identity: Risky/failed sign-ins (event-level emphasis)\n// --------------------------\nlet T_RiskyAuth =\nSigninLogs\n| extend UPNNorm = tostring(column_ifexists('UserPrincipalName', column_ifexists('Identity','')))\n| where UPNNorm == UserUPN\n| extend ResultTypeNorm = toint(column_ifexists('ResultType', 0))\n| extend RiskStateNorm  = tostring(column_ifexists('RiskState', 'none'))\n| extend RiskLevelAggNorm = tostring(column_ifexists('RiskLevelAggregated', ''))\n| extend CAStatusNorm   = tostring(column_ifexists('ConditionalAccessStatus', ''))\n| where ResultTypeNorm != 0 or RiskStateNorm != 'none' or CAStatusNorm has_any ('failure','Failure')\n| extend IPNorm = tostring(column_ifexists('IPAddress', column_ifexists('IpAddress','')))\n| extend LocationNorm = tostring(column_ifexists('Location',''))\n| extend AppNorm = tostring(column_ifexists('AppDisplayName',''))\n| extend Action = 'Risky/Failed Sign-in'\n| extend Details = strcat('App=', AppNorm, '; Location=', LocationNorm, '; CA=', CAStatusNorm, '; RiskState=', RiskStateNorm, '; RiskLevel=', RiskLevelAggNorm, '; ResultType=', tostring(ResultTypeNorm))\n| extend SeverityScore = case(\n    RiskLevelAggNorm =~ 'high', 100,\n    RiskLevelAggNorm =~ 'medium', 85,\n    RiskLevelAggNorm =~ 'low', 70,\n    ResultTypeNorm != 0, 75,\n    CAStatusNorm has_any ('failure','Failure'), 70,\n    60\n)\n| project TimeGenerated, Source='SigninLogs', Category='Identity', Action, Details, IPAddress=IPNorm, DeviceName=tostring(column_ifexists('DeviceDetail','')), Workload='', Item='', SiteUrl='', Recipient='', SeverityScore;\n\n// --------------------------\n// 3) O365: SharePoint/OneDrive downloads (OfficeActivity)\n// --------------------------\nlet T_SPODownloads =\nOfficeActivity\n| where UserId == UserUPN\n| extend WorkloadNorm = tostring(column_ifexists('OfficeWorkload', column_ifexists('Workload','')))\n| where WorkloadNorm in ('SharePoint','OneDrive')\n| where Operation in ('FileDownloaded','FileSyncDownloadedFull','FileSyncDownloadedPartial')\n| extend SiteUrlNorm  = tostring(column_ifexists('Site_Url', column_ifexists('SiteUrl','')))\n| extend ClientIPNorm = tostring(column_ifexists('ClientIP', column_ifexists('ClientIp','')))\n| extend ItemNorm = tostring(column_ifexists('SourceFileName',''))\n| extend Action = strcat(WorkloadNorm, ' Download')\n| extend Details = strcat('Op=', Operation)\n| extend SeverityScore = 55\n| project TimeGenerated, Source='OfficeActivity', Category='Cloud Files', Action, Details, IPAddress=ClientIPNorm, DeviceName='', Workload=WorkloadNorm, Item=ItemNorm, SiteUrl=SiteUrlNorm, Recipient='', SeverityScore;\n\n// --------------------------\n// 4) Email: External recipients (EmailEvents)\n// --------------------------\nlet T_ExternalEmail =\nEmailEvents\n| where SenderFromAddress == UserUPN\n| extend RecipientNorm = tostring(column_ifexists('RecipientEmailAddress',''))\n| extend RecipientDomain = tostring(split(RecipientNorm,'@')[1])\n| where isnotempty(RecipientDomain) and RecipientDomain !~ InternalDomain\n| extend Action = 'Email Sent (External Recipient)'\n| extend Details = strcat('To=', RecipientNorm, '; Domain=', RecipientDomain, '; Subject=', tostring(column_ifexists('Subject','')))\n| extend IPNorm = tostring(column_ifexists('SenderIPv4',''))\n| extend SeverityScore = 40\n| project TimeGenerated, Source='EmailEvents', Category='Email', Action, Details, IPAddress=IPNorm, DeviceName='', Workload='', Item='', SiteUrl='', Recipient=RecipientNorm, SeverityScore;\n\n// --------------------------\n// 5) Email: External emails with attachments (EmailAttachmentInfo + EmailEvents)\n// --------------------------\nlet T_ExternalEmailAttach =\nEmailAttachmentInfo\n| join kind=inner (\n    EmailEvents\n    | where SenderFromAddress == UserUPN\n    | extend RecipientNorm = tostring(column_ifexists('RecipientEmailAddress',''))\n    | extend RecipientDomain = tostring(split(RecipientNorm,'@')[1])\n) on NetworkMessageId\n| where isnotempty(RecipientDomain) and RecipientDomain !~ InternalDomain\n| extend FileNorm = tostring(column_ifexists('FileName',''))\n| extend Action = 'Email Sent (External Attachment)'\n| extend Details = strcat('To=', RecipientNorm, '; File=', FileNorm, '; Subject=', tostring(column_ifexists('Subject','')))\n| extend IPNorm = tostring(column_ifexists('SenderIPv4',''))\n| extend SeverityScore = case(\n    FileNorm has_any ('.zip','.7z','.rar'), 85,\n    FileNorm has_any ('.pst','.mbox'), 90,\n    70\n)\n| project TimeGenerated, Source='EmailAttachmentInfo', Category='Email', Action, Details, IPAddress=IPNorm, DeviceName='', Workload='', Item=FileNorm, SiteUrl='', Recipient=RecipientNorm, SeverityScore;\n\n// --------------------------\n// 6) Endpoint: Local file staging (DeviceFileEvents)\n// --------------------------\nlet T_LocalStaging =\nDeviceFileEvents\n| where InitiatingProcessAccountUpn == UserUPN\n| where ActionType == 'FileCreated'\n| where FolderPath has_any ('\\\\Downloads\\\\','\\\\Desktop\\\\','\\\\Documents\\\\')\n| extend DeviceNorm = tostring(column_ifexists('DeviceName',''))\n| extend FileNorm = tostring(column_ifexists('FileName',''))\n| extend ProcNorm = tostring(column_ifexists('InitiatingProcessFileName',''))\n| extend Action = 'Local File Created (Staging Path)'\n| extend Details = strcat('File=', FileNorm, '; Path=', tostring(column_ifexists('FolderPath','')), '; Proc=', ProcNorm)\n| extend SeverityScore = case(\n    FileNorm has_any ('.zip','.7z','.rar'), 70,\n    FileNorm has_any ('.csv','.xlsx'), 60,\n    45\n)\n| project TimeGenerated, Source='DeviceFileEvents', Category='Endpoint', Action, Details, IPAddress='', DeviceName=DeviceNorm, Workload='', Item=FileNorm, SiteUrl='', Recipient='', SeverityScore;\n\n// --------------------------\n// 7) Endpoint: USB events (DeviceEvents)\n// --------------------------\nlet T_USB =\nDeviceEvents\n| where InitiatingProcessAccountUpn == UserUPN\n| where ActionType in ('UsbDriveMounted','UsbDriveFileCopied')\n| extend DeviceNorm = tostring(column_ifexists('DeviceName',''))\n| extend Action = case(ActionType == 'UsbDriveFileCopied', 'USB File Copied', 'USB Drive Mounted')\n| extend Details = tostring(column_ifexists('AdditionalFields',''))\n| extend SeverityScore = case(ActionType == 'UsbDriveFileCopied', 90, 35)\n| project TimeGenerated, Source='DeviceEvents', Category='Removable Media', Action, Details, IPAddress='', DeviceName=DeviceNorm, Workload='', Item='', SiteUrl='', Recipient='', SeverityScore;\n\n// --------------------------\n// 8) CAS: Cloud App events (CloudAppEvents)\n// --------------------------\nlet T_CAS =\nCloudAppEvents\n| extend UPNNorm = tostring(column_ifexists('UserPrincipalName', column_ifexists('UserId', column_ifexists('AccountId',''))))\n| where UPNNorm == UserUPN\n| extend AppNameNorm = tostring(column_ifexists('AppName', column_ifexists('Application','')))\n| extend ActionTypeNorm = tostring(column_ifexists('ActionType', column_ifexists('ActivityType','')))\n| extend IPNorm = tostring(column_ifexists('IPAddress', column_ifexists('IpAddress', column_ifexists('ClientIP',''))))\n| extend DeviceTypeNorm = tostring(column_ifexists('DeviceType', column_ifexists('Device','')))\n| extend UserAgentNorm = tostring(column_ifexists('UserAgent', column_ifexists('UserAgentString','')))\n| extend Action = 'Cloud App Activity'\n| extend Details = strcat('App=', AppNameNorm, '; Action=', ActionTypeNorm, '; DeviceType=', DeviceTypeNorm, '; UA=', UserAgentNorm)\n| extend SeverityScore = 35\n| project TimeGenerated, Source='CloudAppEvents', Category='Cloud Apps', Action, Details, IPAddress=IPNorm, DeviceName='', Workload='', Item='', SiteUrl='', Recipient='', SeverityScore;\n\n// --------------------------\n// Unified timeline output\n// --------------------------\nunion isfuzzy=true T_RiskyAuth, T_USB, T_ExternalEmailAttach, T_SPODownloads, T_LocalStaging, T_ExternalEmail, T_CAS, T_Signins\n| extend TimeBucket = bin(TimeGenerated, 5m)\n| project TimeGenerated, TimeBucket, Category, Source, SeverityScore, Action, Details, IPAddress, DeviceName, Workload, SiteUrl, Item, Recipient\n| order by TimeGenerated desc",
+        "size": 0,
+        "timeContextFromParameter": "TimeRange",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "visualization": "table"
+      },
+      "name": "Unified Investigation Timeline"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "## Investigation pivots\nIf you see a suspicious sequence, pivot like this:\n\n- **Risky/failed sign-in** → check Conditional Access results, device compliance, named locations/VPN.\n- **SharePoint/OneDrive download** → check site sensitivity + file names → correlate to local staging.\n- **Local staging** → inspect initiating process + file types → correlate to USB copy or external email.\n- **USB file copied** → treat as high-signal in regulated environments → identify what was staged beforehand.\n- **External email w/ attachment** → validate recipient legitimacy + file names + timing relative to staging/download.\n\nYes, this is basically “follow the breadcrumbs.” Humans love breadcrumbs. Attackers do too."
+      },
+      "name": "PivotText"
+    }
+  ],
+  "fallbackResourceIds": [
+    "/subscriptions/4f0f6e61-d100-4915-9db2-fc13cdf48bde/resourcegroups/asccomcyberteam/providers/microsoft.operationalinsights/workspaces/asc-global-cloud"
+  ],
+  "fromTemplateId": "sentinel-UserWorkbook",
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
