@@ -14,6 +14,19 @@
       }
     },
     {
+      "name": "Sentinel Workbook - User Timeline Investigation",
+      "displayName": "User Timeline Investigation Workbook",
+      "category": "sentinel",
+      "clouds": {
+        "Commercial": {
+          "url": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/workbooks/Sentinel%20Workbook%20-%20User%20Timeline%20Investigation.json"
+        },
+        "GCCH": {
+          "url": "https://raw.githubusercontent.com/coox-security/aethon-sentinel-baseline/refs/heads/main/workbooks/Sentinel%20Workbook%20-%20User%20Timeline%20Investigation.json"
+        }
+      }
+    },
+    {
   "name": "Sentinel Workbook - Insider Risk - User Activity Investigation",
   "displayName": "Insider Risk – User Activity Investigation",
   "category": "sentinel",
