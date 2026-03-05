@@ -27,7 +27,7 @@
             "timeContext": {
               "durationMs": 86400000
             },
-            "value": "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea"
+            "value": "/subscriptions/cb86f66b-fad1-4a4a-b5b0-95fb33a660a0"
           },
           {
             "id": "2000c1af-bd5c-447c-8368-bf6a7d19dae1",
@@ -44,7 +44,7 @@
             "timeContext": {
               "durationMs": 86400000
             },
-            "value": "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea/resourcegroups/a2gcyberteam/providers/microsoft.operationalinsights/workspaces/a2g-global-cloud"
+            "value": "/subscriptions/cb86f66b-fad1-4a4a-b5b0-95fb33a660a0/resourcegroups/hmeicyberteam/providers/microsoft.operationalinsights/workspaces/hmei-global-coud"
           },
           {
             "id": "ebcaf836-7197-4001-ae51-a789bc9b0c62",
@@ -626,6 +626,44 @@
       }
     },
     {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let WebmailDomains = dynamic([\r\n  \"gmail.com\",\"googlemail.com\",\"outlook.com\",\"hotmail.com\",\"live.com\",\"msn.com\",\r\n  \"yahoo.com\",\"ymail.com\",\"aol.com\",\"icloud.com\",\"me.com\",\"mac.com\",\r\n  \"proton.me\",\"protonmail.com\",\"gmx.com\",\"gmx.us\",\"mail.com\",\"zoho.com\",\"yandex.com\"\r\n]);\r\nEmailEvents\r\n| extend EventTime = coalesce(Timestamp, TimeGenerated)\r\n| summarize arg_max(EventTime, *) by NetworkMessageId, RecipientEmailAddress\r\n| where EmailDirection == \"Outbound\"\r\n| extend RecipientDomain = tostring(split(tolower(RecipientEmailAddress), \"@\")[1])\r\n| where RecipientDomain in~ (WebmailDomains)\r\n| extend SenderAddress = tostring(coalesce(SenderFromAddress, SenderMailFromAddress))\r\n| summarize Count = count() by RecipientEmailAddress, SenderAddress\r\n| top 10 by Count desc",
+        "size": 0,
+        "title": "Webmail Outbound Recipients Leader Board",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "50",
+      "name": "query - 15",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let WebmailDomains = dynamic([\r\n  \"gmail.com\",\"googlemail.com\",\"outlook.com\",\"hotmail.com\",\"live.com\",\"msn.com\",\r\n  \"yahoo.com\",\"ymail.com\",\"aol.com\",\"icloud.com\",\"me.com\",\"mac.com\",\r\n  \"proton.me\",\"protonmail.com\",\"gmx.com\",\"gmx.us\",\"mail.com\",\"zoho.com\",\"yandex.com\"\r\n]);\r\nEmailEvents\r\n| extend EventTime = coalesce(Timestamp, TimeGenerated)\r\n| summarize arg_max(EventTime, *) by NetworkMessageId, RecipientEmailAddress\r\n| where EmailDirection == \"Inbound\"\r\n| extend SenderAddress = tostring(coalesce(SenderFromAddress, SenderMailFromAddress))\r\n| extend SenderDomain  = tostring(split(tolower(SenderAddress), \"@\")[1])\r\n| where SenderDomain in~ (WebmailDomains)\r\n| summarize Count = count() by SenderAddress, RecipientEmailAddress\r\n| top 5 by Count desc",
+        "size": 0,
+        "title": "Webmail Inbound Sender Leader Board",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces"
+      },
+      "customWidth": "50",
+      "name": "query - 16",
+      "styleSettings": {
+        "showBorder": true
+      }
+    },
+    {
       "type": 12,
       "content": {
         "version": "NotebookGroup/1.0",
@@ -843,7 +881,7 @@
     }
   ],
   "fallbackResourceIds": [
-    "/subscriptions/d73b84f9-d231-4114-8eab-1d7ce5fc59ea/resourcegroups/a2gcyberteam/providers/microsoft.operationalinsights/workspaces/a2g-global-cloud"
+    "/subscriptions/cb86f66b-fad1-4a4a-b5b0-95fb33a660a0/resourcegroups/hmeicyberteam/providers/microsoft.operationalinsights/workspaces/hmei-global-coud"
   ],
   "fromTemplateId": "sentinel-UserWorkbook",
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
