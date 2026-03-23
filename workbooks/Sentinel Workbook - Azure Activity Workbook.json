@@ -27,7 +27,7 @@
             "timeContext": {
               "durationMs": 86400000
             },
-            "value": "/subscriptions/cb86f66b-fad1-4a4a-b5b0-95fb33a660a0"
+            "value": null
           },
           {
             "id": "2000c1af-bd5c-447c-8368-bf6a7d19dae1",
@@ -44,7 +44,7 @@
             "timeContext": {
               "durationMs": 86400000
             },
-            "value": "/subscriptions/cb86f66b-fad1-4a4a-b5b0-95fb33a660a0/resourcegroups/hmeicyberteam/providers/microsoft.operationalinsights/workspaces/hmei-global-coud"
+            "value": null
           },
           {
             "id": "ebcaf836-7197-4001-ae51-a789bc9b0c62",
@@ -632,9 +632,7 @@
         "query": "let WebmailDomains = dynamic([\r\n  \"gmail.com\",\"googlemail.com\",\"outlook.com\",\"hotmail.com\",\"live.com\",\"msn.com\",\r\n  \"yahoo.com\",\"ymail.com\",\"aol.com\",\"icloud.com\",\"me.com\",\"mac.com\",\r\n  \"proton.me\",\"protonmail.com\",\"gmx.com\",\"gmx.us\",\"mail.com\",\"zoho.com\",\"yandex.com\"\r\n]);\r\nEmailEvents\r\n| extend EventTime = coalesce(Timestamp, TimeGenerated)\r\n| summarize arg_max(EventTime, *) by NetworkMessageId, RecipientEmailAddress\r\n| where EmailDirection == \"Outbound\"\r\n| extend RecipientDomain = tostring(split(tolower(RecipientEmailAddress), \"@\")[1])\r\n| where RecipientDomain in~ (WebmailDomains)\r\n| extend SenderAddress = tostring(coalesce(SenderFromAddress, SenderMailFromAddress))\r\n| summarize Count = count() by RecipientEmailAddress, SenderAddress\r\n| top 10 by Count desc",
         "size": 0,
         "title": "Webmail Outbound Recipients Leader Board",
-        "timeContext": {
-          "durationMs": 86400000
-        },
+        "timeContextFromParameter": "TimeFrame",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
@@ -651,9 +649,7 @@
         "query": "let WebmailDomains = dynamic([\r\n  \"gmail.com\",\"googlemail.com\",\"outlook.com\",\"hotmail.com\",\"live.com\",\"msn.com\",\r\n  \"yahoo.com\",\"ymail.com\",\"aol.com\",\"icloud.com\",\"me.com\",\"mac.com\",\r\n  \"proton.me\",\"protonmail.com\",\"gmx.com\",\"gmx.us\",\"mail.com\",\"zoho.com\",\"yandex.com\"\r\n]);\r\nEmailEvents\r\n| extend EventTime = coalesce(Timestamp, TimeGenerated)\r\n| summarize arg_max(EventTime, *) by NetworkMessageId, RecipientEmailAddress\r\n| where EmailDirection == \"Inbound\"\r\n| extend SenderAddress = tostring(coalesce(SenderFromAddress, SenderMailFromAddress))\r\n| extend SenderDomain  = tostring(split(tolower(SenderAddress), \"@\")[1])\r\n| where SenderDomain in~ (WebmailDomains)\r\n| summarize Count = count() by SenderAddress, RecipientEmailAddress\r\n| top 5 by Count desc",
         "size": 0,
         "title": "Webmail Inbound Sender Leader Board",
-        "timeContext": {
-          "durationMs": 86400000
-        },
+        "timeContextFromParameter": "TimeFrame",
         "queryType": 0,
         "resourceType": "microsoft.operationalinsights/workspaces"
       },
@@ -881,7 +877,7 @@
     }
   ],
   "fallbackResourceIds": [
-    "/subscriptions/cb86f66b-fad1-4a4a-b5b0-95fb33a660a0/resourcegroups/hmeicyberteam/providers/microsoft.operationalinsights/workspaces/hmei-global-coud"
+    "/subscriptions/e88d4f55-ab8f-4486-8323-0dcd5023950f/resourcegroups/s2scyberteam/providers/microsoft.operationalinsights/workspaces/s2s-global-cloud"
   ],
   "fromTemplateId": "sentinel-UserWorkbook",
   "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
