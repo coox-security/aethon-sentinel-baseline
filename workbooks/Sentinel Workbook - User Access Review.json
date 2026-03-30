@@ -69,23 +69,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "InactiveUserAccounts_CL
-| take 1
-| extend raw = tostring(body_s)
-| extend fixed = replace_string(raw, '\\"', '"')
-| extend objects = extract_all(@"(\{[^{}]*\})", fixed)
-| mv-expand obj = objects
-| extend user = parse_json(tostring(obj))
-| extend
-    displayName = tostring(user.displayName),
-    userPrincipalName = tostring(user.userPrincipalName),
-    accountEnabled = tobool(user.accountEnabled),
-    lastSignInDateTime = todatetime(tostring(user.lastSignInDateTime))
-| where isnotempty(userPrincipalName)
-| where lastSignInDateTime < ago(30d)
-| project displayName, userPrincipalName, accountEnabled, lastSignInDateTime
-| order by lastSignInDateTime asc
-| where accountEnabled == true",
+        "query": "InactiveUserAccounts_CL\n| top 1 by TimeGenerated desc\n| extend raw = tostring(body_s)\n| extend fixed = replace_string(raw, '\\\\\"', '\"')\n| extend objects = extract_all(@\"(\\{[^{}]*\\})\", fixed)\n| mv-expand obj = objects\n| extend user = parse_json(tostring(obj))\n| extend\n    displayName = tostring(user.displayName),\n    userPrincipalName = tostring(user.userPrincipalName),\n    accountEnabled = tobool(user.accountEnabled),\n    lastSignInDateTime = todatetime(tostring(user.lastSignInDateTime))\n| where isnotempty(userPrincipalName)\n| where accountEnabled == true\n| where lastSignInDateTime < ago(30d)\n| project displayName, userPrincipalName, accountEnabled, lastSignInDateTime\n| order by lastSignInDateTime asc",
         "size": 3,
         "title": "Inactive User Accounts (30+ Days)",
         "showExportToExcel": true,
