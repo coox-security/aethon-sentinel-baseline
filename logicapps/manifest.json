@@ -27,6 +27,10 @@
     {
       "name": "SubscriptionAssignmentReview",
       "templatePath": "logicapps/SubscriptionAssignmentReview/template.json"
-    }
+    },
+    {
+  "name": "DefenderRecommendations",
+  "templatePath": "logicapps/DefenderRecommendations/template.json"
+}
   ]
 }
