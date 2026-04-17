@@ -1,1 +1,231 @@
-{}
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "workflows_DefenderRecommendations_name": {
+      "type": "string",
+      "defaultValue": "DefenderRecommendations"
+    },
+    "tenantId": {
+      "type": "string"
+    },
+    "clientId": {
+      "type": "string"
+    },
+    "clientSecret": {
+      "type": "securestring"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('workflows_DefenderRecommendations_name')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "triggers": {
+            "Recurrence": {
+              "type": "Recurrence",
+              "recurrence": {
+                "frequency": "Week",
+                "interval": 1
+              }
+            }
+          },
+          "actions": {
+            "Initialize_DefenderApiBase": {
+              "runAfter": {},
+              "type": "InitializeVariable",
+              "inputs": {
+                "variables": [
+                  {
+                    "name": "tenantId",
+                    "type": "string",
+                    "value": "@{parameters('tenantId')}"
+                  },
+                  {
+                    "name": "clientId",
+                    "type": "string",
+                    "value": "@{parameters('clientId')}"
+                  },
+                  {
+                    "name": "clientSecret",
+                    "type": "string",
+                    "value": "@{parameters('clientSecret')}"
+                  },
+                  {
+                    "name": "loginEndpoint",
+                    "type": "string",
+                    "value": "https://login.microsoftonline.com"
+                  },
+                  {
+                    "name": "defenderApiBase",
+                    "type": "string",
+                    "value": "https://api.security.microsoft.com"
+                  }
+                ]
+              }
+            },
+            "Get_Defender_Token": {
+              "runAfter": {
+                "Initialize_DefenderApiBase": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Http",
+              "inputs": {
+                "uri": "@{variables('loginEndpoint')}/@{variables('tenantId')}/oauth2/v2.0/token",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://api.securitycenter.microsoft.com/.default"
+              }
+            },
+            "Parse_Token": {
+              "runAfter": {
+                "Get_Defender_Token": [
+                  "Succeeded"
+                ]
+              },
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Get_Defender_Token')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "Get_Software_and_Firmware_Recommendations": {
+              "runAfter": {
+                "Parse_Token": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Http",
+              "inputs": {
+                "uri": "@{variables('defenderApiBase')}/api/recommendations?$filter=status eq 'Active' and (remediationType eq 'Update' or remediationType eq 'Upgrade' or remediationType eq 'Uninstall')&$top=10000",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Parse_Token')?['access_token']}",
+                  "Accept": "application/json"
+                }
+              }
+            },
+            "Get_Configuration_Change_Recommendations": {
+              "runAfter": {
+                "Parse_Token": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Http",
+              "inputs": {
+                "uri": "@{variables('defenderApiBase')}/api/recommendations?$filter=status eq 'Active' and remediationType eq 'ConfigurationChange'&$top=10000",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Parse_Token')?['access_token']}",
+                  "Accept": "application/json"
+                }
+              }
+            },
+            "Select_Software_Firmware_Export": {
+              "runAfter": {
+                "Get_Software_and_Firmware_Recommendations": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Get_Software_and_Firmware_Recommendations')?['value']",
+                "select": {
+                  "Security recommendation": "@coalesce(item()?['recommendationName'], '')",
+                  "Weaknesses": "@coalesce(item()?['weaknesses'], 0)",
+                  "Related component": "@coalesce(item()?['relatedComponent'], '')",
+                  "Has exploit": "@if(equals(item()?['publicExploit'], true), 'True', 'False')",
+                  "Has known threats": "@if(greater(length(coalesce(item()?['associatedThreats'], json('[]'))), 0), 'True', 'False')",
+                  "Has associated threats": "@if(equals(item()?['activeAlert'], true), 'True', 'False')",
+                  "Exposed machines": "@coalesce(item()?['exposedMachinesCount'], 0)",
+                  "Total machines": "@coalesce(item()?['totalMachineCount'], 0)",
+                  "Status": "@coalesce(item()?['status'], '')",
+                  "Type": "@if(equals(item()?['remediationType'], 'Update'), 'Software update', if(equals(item()?['remediationType'], 'Upgrade'), 'Software upgrade', if(equals(item()?['remediationType'], 'Uninstall'), 'Software uninstall', if(equals(item()?['remediationType'], 'FirmwareUpdate'), 'Firmware update', coalesce(item()?['remediationType'], '')))))",
+                  "Exposure score impact": "@coalesce(item()?['exposureImpact'], 0)",
+                  "Configuration score impact": "@coalesce(item()?['configScoreImpact'], 0)",
+                  "EOS software state": "@coalesce(item()?['eosSoftwareState'], '')",
+                  "EOS software from": "@coalesce(item()?['eosSoftwareFrom'], '')",
+                  "Has EOS versions": "@if(equals(item()?['hasEolVersions'], true), 'True', 'False')",
+                  "Has upcoming EOS versions": "@if(equals(item()?['hasUpcomingEolVersions'], true), 'True', 'False')",
+                  "Tags": "@if(empty(item()?['tags']), '', join(item()?['tags'], ', '))"
+                }
+              }
+            },
+            "Create_CSV_table": {
+              "runAfter": {
+                "Select_Software_Firmware_Export": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Table",
+              "inputs": {
+                "from": "@body('Select_Software_Firmware_Export')",
+                "format": "CSV"
+              }
+            },
+            "Select_Configuration_Change_Export": {
+              "runAfter": {
+                "Get_Configuration_Change_Recommendations": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Get_Configuration_Change_Recommendations')?['value']",
+                "select": {
+                  "Security recommendation": "@coalesce(item()?['recommendationName'], '')",
+                  "Weaknesses": "@coalesce(item()?['weaknesses'], 0)",
+                  "Related component": "@coalesce(item()?['relatedComponent'], '')",
+                  "Has exploit": "@if(equals(item()?['publicExploit'], true), 'True', 'False')",
+                  "Has known threats": "@if(greater(length(coalesce(item()?['associatedThreats'], json('[]'))), 0), 'True', 'False')",
+                  "Has associated threats": "@if(equals(item()?['activeAlert'], true), 'True', 'False')",
+                  "Exposed machines": "@coalesce(item()?['exposedMachinesCount'], 0)",
+                  "Total machines": "@coalesce(item()?['totalMachineCount'], 0)",
+                  "Status": "@coalesce(item()?['status'], '')",
+                  "Type": "@if(equals(item()?['remediationType'], 'ConfigurationChange'), 'Configuration change', coalesce(item()?['remediationType'], ''))",
+                  "Exposure score impact": "@coalesce(item()?['exposureImpact'], 0)",
+                  "Configuration score impact": "@coalesce(item()?['configScoreImpact'], 0)",
+                  "EOS software state": "@coalesce(item()?['eosSoftwareState'], '')",
+                  "EOS software from": "@coalesce(item()?['eosSoftwareFrom'], '')",
+                  "Has EOS versions": "@if(equals(item()?['hasEolVersions'], true), 'True', 'False')",
+                  "Has upcoming EOS versions": "@if(equals(item()?['hasUpcomingEolVersions'], true), 'True', 'False')",
+                  "Tags": "@if(empty(item()?['tags']), '', join(item()?['tags'], ', '))"
+                }
+              }
+            },
+            "Create_CSV_table_Configuration_Change": {
+              "runAfter": {
+                "Select_Configuration_Change_Export": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Table",
+              "inputs": {
+                "from": "@body('Select_Configuration_Change_Export')",
+                "format": "CSV"
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {}
+      }
+    }
+  ]
+}
