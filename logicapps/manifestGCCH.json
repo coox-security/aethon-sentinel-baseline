@@ -27,6 +27,10 @@
     {
       "name": "SubscriptionAssignmentReview",
       "templatePath": "logicapps/SubscriptionAssignmentReview/templateGCCH.json"
-    }
+    },
+    {
+  "name": "DefenderRecommendations",
+  "templatePath": "logicapps/DefenderRecommendations/templateGCCH.json"
+}
   ]
 }
