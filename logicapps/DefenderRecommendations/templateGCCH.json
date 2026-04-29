@@ -14,6 +14,10 @@
     },
     "clientSecret": {
       "type": "securestring"
+    },
+    "$connections": {
+      "type": "object",
+      "defaultValue": {}
     }
   },
   "resources": [
@@ -24,9 +28,27 @@
       "location": "[resourceGroup().location]",
       "properties": {
         "state": "Enabled",
+
         "definition": {
           "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
           "contentVersion": "1.0.0.0",
+
+          "parameters": {
+            "$connections": {
+              "type": "Object",
+              "defaultValue": {}
+            },
+            "tenantId": {
+              "type": "String"
+            },
+            "clientId": {
+              "type": "String"
+            },
+            "clientSecret": {
+              "type": "SecureString"
+            }
+          },
+
           "triggers": {
             "Recurrence": {
               "type": "Recurrence",
@@ -36,6 +58,7 @@
               }
             }
           },
+
           "actions": {
             "Initialize_DefenderApiBase": {
               "runAfter": {},
@@ -70,6 +93,7 @@
                 ]
               }
             },
+
             "Get_Defender_Token": {
               "runAfter": {
                 "Initialize_DefenderApiBase": [
@@ -86,6 +110,7 @@
                 "body": "grant_type=client_credentials&client_id=@{variables('clientId')}&client_secret=@{variables('clientSecret')}&scope=https://api-gov.securitycenter.microsoft.us/.default"
               }
             },
+
             "Parse_Token": {
               "runAfter": {
                 "Get_Defender_Token": [
@@ -105,6 +130,7 @@
                 }
               }
             },
+
             "Get_Software_and_Firmware_Recommendations": {
               "runAfter": {
                 "Parse_Token": [
@@ -121,6 +147,7 @@
                 }
               }
             },
+
             "Get_Configuration_Change_Recommendations": {
               "runAfter": {
                 "Parse_Token": [
@@ -137,6 +164,7 @@
                 }
               }
             },
+
             "Select_Software_Firmware_Export": {
               "runAfter": {
                 "Get_Software_and_Firmware_Recommendations": [
@@ -156,7 +184,7 @@
                   "Exposed machines": "@coalesce(item()?['exposedMachinesCount'], 0)",
                   "Total machines": "@coalesce(item()?['totalMachineCount'], 0)",
                   "Status": "@coalesce(item()?['status'], '')",
-                  "Type": "@if(equals(item()?['remediationType'], 'Update'), 'Software update', if(equals(item()?['remediationType'], 'Upgrade'), 'Software upgrade', if(equals(item()?['remediationType'], 'Uninstall'), 'Software uninstall', if(equals(item()?['remediationType'], 'FirmwareUpdate'), 'Firmware update', coalesce(item()?['remediationType'], '')))))",
+                  "Type": "@coalesce(item()?['remediationType'], '')",
                   "Exposure score impact": "@coalesce(item()?['exposureImpact'], 0)",
                   "Configuration score impact": "@coalesce(item()?['configScoreImpact'], 0)",
                   "EOS software state": "@coalesce(item()?['eosSoftwareState'], '')",
@@ -167,6 +195,7 @@
                 }
               }
             },
+
             "Create_CSV_table": {
               "runAfter": {
                 "Select_Software_Firmware_Export": [
@@ -179,6 +208,7 @@
                 "format": "CSV"
               }
             },
+
             "Select_Configuration_Change_Export": {
               "runAfter": {
                 "Get_Configuration_Change_Recommendations": [
@@ -198,7 +228,7 @@
                   "Exposed machines": "@coalesce(item()?['exposedMachinesCount'], 0)",
                   "Total machines": "@coalesce(item()?['totalMachineCount'], 0)",
                   "Status": "@coalesce(item()?['status'], '')",
-                  "Type": "@if(equals(item()?['remediationType'], 'ConfigurationChange'), 'Configuration change', coalesce(item()?['remediationType'], ''))",
+                  "Type": "@coalesce(item()?['remediationType'], '')",
                   "Exposure score impact": "@coalesce(item()?['exposureImpact'], 0)",
                   "Configuration score impact": "@coalesce(item()?['configScoreImpact'], 0)",
                   "EOS software state": "@coalesce(item()?['eosSoftwareState'], '')",
@@ -209,6 +239,7 @@
                 }
               }
             },
+
             "Create_CSV_table_Configuration_Change": {
               "runAfter": {
                 "Select_Configuration_Change_Export": [
@@ -222,9 +253,24 @@
               }
             }
           },
+
           "outputs": {}
         },
-        "parameters": {}
+
+        "parameters": {
+          "$connections": {
+            "value": "[parameters('$connections')]"
+          },
+          "tenantId": {
+            "value": "[parameters('tenantId')]"
+          },
+          "clientId": {
+            "value": "[parameters('clientId')]"
+          },
+          "clientSecret": {
+            "value": "[parameters('clientSecret')]"
+          }
+        }
       }
     }
   ]
