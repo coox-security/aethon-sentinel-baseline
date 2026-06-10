@@ -676,8 +676,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "DeviceEvents\r\n| where ActionType == \"UsbDriveMounted\"\r\n| extend DriveLetter = tostring(todynamic(AdditionalFields).DriveLetter)\r\n| join kind=inner (DeviceFileEvents\r\n    | where ActionType == \"FileCreated\"\r\n    | project TimeGenerated, ActionType, FolderPath, DeviceId, FileName, FileSize\r\n    | extend FileCopyTime = TimeGenerated\r\n    | parse FolderPath with DriveLetter '\\\\' *\r\n    | extend DriveLetter = tostring(DriveLetter)\r\n    )\r\n    on DeviceId, DriveLetter\r\n| extend user = tostring(parse_json(tostring(AdditionalFields.LoggedOnUsers))[0])\r\n| project TimeGenerated, ['user'], FolderPath, FileName1\r\n\r\n",
-              "size": 0,
+"query": "let UsbMounts = DeviceEvents\r\n| where ActionType == \"UsbDriveMounted\"\r\n| extend DriveLetter = tostring(todynamic(AdditionalFields).DriveLetter)\r\n| extend MountTime = TimeGenerated\r\n| project DeviceId, DriveLetter, MountTime, AdditionalFields;\r\nDeviceFileEvents\r\n| where ActionType == \"FileCreated\"\r\n| where isnotempty(FolderPath)\r\n| parse FolderPath with DriveLetter \"\\\\\" *\r\n| project FileTime = TimeGenerated, DeviceId, DriveLetter, FileName\r\n| join kind=inner (UsbMounts) on DeviceId, DriveLetter\r\n| where FileTime >= MountTime and FileTime <= MountTime + 4h\r\n| extend user = tostring(parse_json(tostring(AdditionalFields.LoggedOnUsers))[0])\r\n| project FileTime, user, FileName\r\n| distinct *\r\n| order by FileTime desc"              "size": 0,
               "title": "Files copied to removable media:",
               "noDataMessage": "Empty results here simply mean that there were no files copied to removable media detected and should be considered normal.",
               "timeContextFromParameter": "TimeFrame",
