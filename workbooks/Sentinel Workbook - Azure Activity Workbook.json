@@ -514,8 +514,7 @@
       "type": 3,
       "content": {
         "version": "KqlItem/1.0",
-        "query": "SigninLogs\r\n//| where ConditionalAccessStatus == \"success\"\r\n| project City = LocationDetails.city, latitude = LocationDetails.geoCoordinates.latitude, longitude = LocationDetails.geoCoordinates.longitude\r\n| summarize count() by tostring(City), tostring(latitude), tostring(longitude)\r\n| where isnotempty(City)\r\n| sort by count_ desc ",
-        "size": 3,
+"query": "SigninLogs\r\n| project City = LocationDetails.city, latitude = LocationDetails.geoCoordinates.latitude, longitude = LocationDetails.geoCoordinates.longitude\r\n| where isnotempty(City)\r\n| summarize count() by tostring(City), tostring(latitude), tostring(longitude)\r\n| sort by count_ desc"        "size": 3,
         "title": "Signins by geolocation:",
         "timeContextFromParameter": "TimeFrame",
         "queryType": 0,
