@@ -487,19 +487,20 @@
             "name": "text - 1"
           },
           {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "SigninLogs\r\n| where isnotempty(ConditionalAccessPolicies)\r\n| extend ConditionalAccessPoliciesArray = parsejson(ConditionalAccessPolicies)\r\n| mv-expand policy = ConditionalAccessPoliciesArray\r\n| project TimeGenerated, UserPrincipalName, displayName = policy.displayName, result = policy.result\r\n| where result != \"notApplied\"\r\n| where result != \"success\"\r\n| summarize count() by tostring(FailedPolicy = displayName)\r\n| sort by count_ desc\r\n| take 5",
-              "size": 0,
-              "title": "Conditional Access Policy Failures",
-              "timeContextFromParameter": "TimeFrame",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "crossComponentResources": [
-                "{Workspace}"
-              ]
-            },
+  "type": 3,
+  "content": {
+    "version": "KqlItem/1.0",
+    "query": "SigninLogs\r\n| where isnotempty(ConditionalAccessPolicies)\r\n| extend ConditionalAccessPoliciesArray = parsejson(ConditionalAccessPolicies)\r\n| mv-expand policy = ConditionalAccessPoliciesArray\r\n| project TimeGenerated, UserPrincipalName, displayName = policy.displayName, result = policy.result\r\n| where result != \"notApplied\"\r\n| where result != \"success\"\r\n| summarize count() by tostring(FailedPolicy = displayName)\r\n| sort by count_ desc\r\n| take 5",
+    "size": 0,
+    "title": "Conditional Access Policy Failures",
+    "timeContextFromParameter": "TimeFrame",
+    "queryType": 0,
+    "resourceType": "microsoft.operationalinsights/workspaces",
+    "crossComponentResources": [
+      "{Workspace}"
+    ]
+  }
+},
             "name": "query - 12"
           }
         ]
