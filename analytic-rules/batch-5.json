@@ -196,51 +196,6 @@
             }
         },
         {
-            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/e5a04495-ede5-40d5-87f5-fc8e522d6a5d')]",
-            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/e5a04495-ede5-40d5-87f5-fc8e522d6a5d')]",
-            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
-            "kind": "Scheduled",
-            "apiVersion": "2023-12-01-preview",
-            "properties": {
-                "displayName": "Custom Rule - WDAC Monitoring",
-                "description": "This query returns any application that a user attempts to run that is on the WDAC list.  These results should be reviewed regularly for signs of potential compromise.",
-                "severity": "Informational",
-                "enabled": true,
-                "query": "DeviceEvents\n| where TimeGenerated > ago(24h)\n| where (AdditionalFields.[\"Validated Signing Level\"]) == \"Unsigned\"\n| where DeviceName matches regex \"ws\"\n//| where InitiatingProcessAccountUpn matches regex \"@consultdts.com\"\n//| where FolderPath startswith \"\\\\Device\\\\HarddiskVolume3\\\\Program Files\\\\\"\n| sort by TimeGenerated desc\n| project \n    TimeGenerated,\n    FileName,\n    FolderPath,\n    (AdditionalFields.[\"Validated Signing Level\"]),\n    DeviceName,\n    InitiatingProcessAccountUpn\n| where isnotempty(FileName)\n| distinct DeviceName, FileName, FolderPath, tostring(['AdditionalFields_Validated Signing Level']), InitiatingProcessAccountUpn\n| where FileName !in (\"WebClnt.dll\", \"wsl.exe\", \"CDMBaseObjects.dll\")\n| sort by DeviceName asc \n",
-                "queryFrequency": "P1D",
-                "queryPeriod": "P1D",
-                "triggerOperator": "GreaterThan",
-                "triggerThreshold": 0,
-                "suppressionDuration": "PT5H",
-                "suppressionEnabled": false,
-                "startTimeUtc": null,
-                "tactics": [],
-                "techniques": [],
-                "subTechniques": [],
-                "alertRuleTemplateName": null,
-                "incidentConfiguration": {
-                    "createIncident": true,
-                    "groupingConfiguration": {
-                        "enabled": false,
-                        "reopenClosedIncident": false,
-                        "lookbackDuration": "PT5M",
-                        "matchingMethod": "AllEntities",
-                        "groupByEntities": [],
-                        "groupByAlertDetails": null,
-                        "groupByCustomDetails": null
-                    }
-                },
-                "eventGroupingSettings": {
-                    "aggregationKind": "SingleAlert"
-                },
-                "alertDetailsOverride": null,
-                "customDetails": null,
-                "entityMappings": null,
-                "sentinelEntitiesMappings": null,
-                "templateVersion": null
-            }
-        },
-        {
             "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/6ccbdb12-c399-4faf-9fa8-564195f3374a')]",
             "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/6ccbdb12-c399-4faf-9fa8-564195f3374a')]",
             "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
@@ -587,53 +542,6 @@
                 "techniques": [],
                 "subTechniques": [],
                 "alertRuleTemplateName": "8b4f03e7-3460-4401-824d-e65a8dd464f0",
-                "incidentConfiguration": {
-                    "createIncident": true,
-                    "groupingConfiguration": {
-                        "enabled": false,
-                        "reopenClosedIncident": false,
-                        "lookbackDuration": "PT5M",
-                        "matchingMethod": "AllEntities",
-                        "groupByEntities": [],
-                        "groupByAlertDetails": null,
-                        "groupByCustomDetails": null
-                    }
-                },
-                "eventGroupingSettings": {
-                    "aggregationKind": "SingleAlert"
-                },
-                "alertDetailsOverride": null,
-                "customDetails": null,
-                "entityMappings": null,
-                "sentinelEntitiesMappings": null,
-                "templateVersion": null
-            }
-        },
-        {
-            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/0e4ef51a-a4cd-4be9-875f-9092651d18d2')]",
-            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/0e4ef51a-a4cd-4be9-875f-9092651d18d2')]",
-            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
-            "kind": "Scheduled",
-            "apiVersion": "2023-12-01-preview",
-            "properties": {
-                "displayName": "Custom Rule - Most Recent Antivirus Scan Older Than 7 Days",
-                "description": "This scheduled query checks for the most recent anti-virus scan and returns workstations where the most recent completed scan is more than 7 days old.",
-                "severity": "Medium",
-                "enabled": true,
-                "query": "DeviceEvents\r\n| where ActionType == \"AntivirusScanCompleted\"\r\n| summarize arg_max(TimeGenerated, DeviceName) by DeviceName\r\n| where TimeGenerated < ago(7d)\r\n| project-away DeviceName1\r\n| project-away TimeGenerated\r\n\r\n",
-                "queryFrequency": "P1D",
-                "queryPeriod": "P14D",
-                "triggerOperator": "GreaterThan",
-                "triggerThreshold": 0,
-                "suppressionDuration": "PT5H",
-                "suppressionEnabled": false,
-                "startTimeUtc": null,
-                "tactics": [
-                    "Impact"
-                ],
-                "techniques": [],
-                "subTechniques": [],
-                "alertRuleTemplateName": null,
                 "incidentConfiguration": {
                     "createIncident": true,
                     "groupingConfiguration": {
@@ -1106,53 +1014,6 @@
                         ]
                     }
                 ],
-                "sentinelEntitiesMappings": null,
-                "templateVersion": null
-            }
-        },
-        {
-            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/de8a4884-37a8-4f83-ab6c-85d9e65268c0')]",
-            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/de8a4884-37a8-4f83-ab6c-85d9e65268c0')]",
-            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
-            "kind": "Scheduled",
-            "apiVersion": "2023-12-01-preview",
-            "properties": {
-                "displayName": "Guest Users Invited to Tenant by New Inviters",
-                "description": "Detects when a Guest User is added by a user account that has not been seen adding a guest in the previous 14 days.\n  Monitoring guest accounts and the access they are provided is important to detect potential account abuse.\n  Accounts added should be investigated to ensure the activity was legitimate.\n  Ref: https://docs.microsoft.com/azure/active-directory/fundamentals/security-operations-user-accounts#monitoring-for-failed-unusual-sign-ins",
-                "severity": "Medium",
-                "enabled": true,
-                "query": "let inviting_users = (AuditLogs\n  | where TimeGenerated between(ago(14d)..ago(1d))\n  | where OperationName =~ \"Invite external user\"\n  | where Result =~ \"success\"\n  | extend invitingUser = tostring(parse_json(tostring(InitiatedBy.user)).userPrincipalName)\n  | where isnotempty(invitingUser)\n  | summarize by invitingUser);\n  AuditLogs\n  | where TimeGenerated > ago(1d)\n  | where OperationName =~ \"Invite external user\"\n  | where Result =~ \"success\"\n  | extend invitingUser = tostring(parse_json(tostring(InitiatedBy.user)).userPrincipalName)\n  | where isnotempty(invitingUser) and invitingUser !in (inviting_users)\n  | extend invitedUserPrincipalName = tostring(TargetResources[0].userPrincipalName)\n  | extend ipAddress = tostring(parse_json(tostring(InitiatedBy.user)).ipAddress)",
-                "queryFrequency": "P1D",
-                "queryPeriod": "P14D",
-                "triggerOperator": "GreaterThan",
-                "triggerThreshold": 0,
-                "suppressionDuration": "PT5H",
-                "suppressionEnabled": false,
-                "startTimeUtc": null,
-                "tactics": [
-                    "Persistence"
-                ],
-                "techniques": [],
-                "subTechniques": [],
-                "alertRuleTemplateName": "572e75ef-5147-49d9-9d65-13f2ed1e3a86",
-                "incidentConfiguration": {
-                    "createIncident": true,
-                    "groupingConfiguration": {
-                        "enabled": false,
-                        "reopenClosedIncident": false,
-                        "lookbackDuration": "PT5M",
-                        "matchingMethod": "AllEntities",
-                        "groupByEntities": [],
-                        "groupByAlertDetails": null,
-                        "groupByCustomDetails": null
-                    }
-                },
-                "eventGroupingSettings": {
-                    "aggregationKind": "SingleAlert"
-                },
-                "alertDetailsOverride": null,
-                "customDetails": null,
-                "entityMappings": null,
                 "sentinelEntitiesMappings": null,
                 "templateVersion": null
             }
