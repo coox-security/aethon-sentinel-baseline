@@ -1845,53 +1845,6 @@
             }
         },
         {
-            "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/d70c64d0-a4b0-41b0-b420-eeda2019b88a')]",
-            "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/d70c64d0-a4b0-41b0-b420-eeda2019b88a')]",
-            "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
-            "kind": "Scheduled",
-            "apiVersion": "2023-12-01-preview",
-            "properties": {
-                "displayName": "User Added to Admin Role",
-                "description": "Detects a user being added to a new privileged role. Monitor these additions to ensure the users are made eligible for these roles are intended to have these levels of access.\n  Ref: https://docs.microsoft.com/azure/active-directory/fundamentals/security-operations-privileged-accounts#changes-to-privileged-accounts",
-                "severity": "Low",
-                "enabled": true,
-                "query": "AuditLogs\n  | where OperationName in (\"Add eligible member (permanent)\", \"Add eligible member (eligible)\", \"Add member to role\")\n  | mv-apply TargetResource = TargetResources on \n  (\n      where TargetResource.type =~ \"User\"\n      | extend Target = tostring(TargetResource.userPrincipalName),\n               props = TargetResource.modifiedProperties\n  )\n  | mv-apply Property = props on \n  (\n      where Property.displayName =~ \"Role.DisplayName\"\n      | extend RoleName = trim('\"',tostring(Property.newValue))\n  )\n  | where RoleName contains \"admin\"\n  | extend InitiatingAppName = tostring(InitiatedBy.app.displayName)\n  | extend InitiatingAppServicePrincipalId = tostring(InitiatedBy.app.servicePrincipalId)\n  | extend InitiatingUserPrincipalName = tostring(InitiatedBy.user.userPrincipalName)\n  | extend InitiatingAadUserId = tostring(InitiatedBy.user.id)\n  | extend InitiatingIPAddress = tostring(InitiatedBy.user.ipAddress)\n  | extend InitiatedBy = iif(isnotempty(InitiatingAppName), InitiatingAppName, InitiatingUserPrincipalName)\n  | extend TargetUserPrincipalName = iff(OperationName==\"Add member to role\",tostring(TargetResources[0].userPrincipalName),tostring(TargetResources[2].userPrincipalName))\n  | extend TargetAadUserId = iff(OperationName==\"Add member to role\", tostring(TargetResources[0].id), tostring(TargetResources[2].id))\n  | extend AddedUser = TargetUserPrincipalName\n  | extend TargetAccountName = tostring(split(TargetUserPrincipalName, \"@\")[0]), TargetAccountUPNSuffix = tostring(split(TargetUserPrincipalName, \"@\")[1])\n  | extend InitiatingAccountName = tostring(split(InitiatingUserPrincipalName, \"@\")[0]), InitiatingAccountUPNSuffix = tostring(split(InitiatingUserPrincipalName, \"@\")[1])\n  | project-reorder TimeGenerated, AddedUser, RoleName, InitiatedBy\n",
-                "queryFrequency": "P1D",
-                "queryPeriod": "P1D",
-                "triggerOperator": "GreaterThan",
-                "triggerThreshold": 0,
-                "suppressionDuration": "PT5H",
-                "suppressionEnabled": false,
-                "startTimeUtc": null,
-                "tactics": [
-                    "PrivilegeEscalation"
-                ],
-                "techniques": [],
-                "subTechniques": [],
-                "alertRuleTemplateName": "2a09f8cb-deb7-4c40-b08b-9137667f1c0b",
-                "incidentConfiguration": {
-                    "createIncident": true,
-                    "groupingConfiguration": {
-                        "enabled": false,
-                        "reopenClosedIncident": false,
-                        "lookbackDuration": "PT5M",
-                        "matchingMethod": "AllEntities",
-                        "groupByEntities": [],
-                        "groupByAlertDetails": null,
-                        "groupByCustomDetails": null
-                    }
-                },
-                "eventGroupingSettings": {
-                    "aggregationKind": "SingleAlert"
-                },
-                "alertDetailsOverride": null,
-                "customDetails": null,
-                "entityMappings": null,
-                "sentinelEntitiesMappings": null,
-                "templateVersion": null
-            }
-        },
-        {
             "id": "[concat(resourceId('Microsoft.OperationalInsights/workspaces/providers', parameters('workspace'), 'Microsoft.SecurityInsights'),'/alertRules/3f904d45-4438-4535-a7ea-429c534782fe')]",
             "name": "[concat(parameters('workspace'),'/Microsoft.SecurityInsights/3f904d45-4438-4535-a7ea-429c534782fe')]",
             "type": "Microsoft.OperationalInsights/workspaces/providers/alertRules",
