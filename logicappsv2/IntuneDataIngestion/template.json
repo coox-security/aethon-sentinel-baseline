@@ -1,0 +1,154 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "2.0.0.0",
+  "parameters": {
+    "workflowName": { "type": "string", "defaultValue": "IntuneDataIngestionV2" },
+    "tenantId": { "type": "string", "metadata": { "description": "Microsoft Entra tenant ID" } },
+    "clientId": { "type": "string", "metadata": { "description": "Application registration client ID used to query Microsoft Graph" } },
+    "clientSecret": { "type": "secureString", "metadata": { "description": "Application registration client secret" } },
+    "entraLoginEndpoint": { "type": "string", "defaultValue": "https://login.microsoftonline.com" },
+    "graphEndpoint": { "type": "string", "defaultValue": "https://graph.microsoft.com" },
+    "logsIngestionUri": { "type": "string", "metadata": { "description": "Complete Logs Ingestion API URI for IntuneDevicesV2_CL" } },
+    "monitorAudience": { "type": "string", "defaultValue": "https://monitor.azure.com" }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('workflowName')]",
+      "location": "[resourceGroup().location]",
+      "identity": { "type": "SystemAssigned" },
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "2.0.0.0",
+          "parameters": {
+            "tenantId": { "type": "string" },
+            "clientId": { "type": "string" },
+            "clientSecret": { "type": "securestring" },
+            "entraLoginEndpoint": { "type": "string" },
+            "graphEndpoint": { "type": "string" },
+            "logsIngestionUri": { "type": "string" },
+            "monitorAudience": { "type": "string" }
+          },
+          "triggers": {
+            "Recurrence": {
+              "type": "Recurrence",
+              "recurrence": { "frequency": "Day", "interval": 1 }
+            }
+          },
+          "actions": {
+            "Get_Token": {
+              "type": "Http",
+              "runAfter": {},
+              "inputs": {
+                "uri": "@{concat(parameters('entraLoginEndpoint'), '/', parameters('tenantId'), '/oauth2/v2.0/token')}",
+                "method": "POST",
+                "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+                "body": "@{concat('grant_type=client_credentials&client_id=', encodeUriComponent(parameters('clientId')), '&client_secret=', encodeUriComponent(parameters('clientSecret')), '&scope=', encodeUriComponent(concat(parameters('graphEndpoint'), '/.default')))}"
+              },
+              "runtimeConfiguration": {
+                "secureData": { "properties": ["inputs", "outputs"] }
+              }
+            },
+            "HTTP_Get_ManagedDevices": {
+              "type": "Http",
+              "runAfter": { "Get_Token": ["Succeeded"] },
+              "inputs": {
+                "uri": "@{concat(parameters('graphEndpoint'), '/beta/deviceManagement/managedDevices?$select=id,deviceName,userPrincipalName,model,manufacturer,operatingSystem,osVersion,complianceState,lastSyncDateTime,serialNumber&$top=999')}",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                  "Content-Type": "application/json"
+                }
+              }
+            },
+            "Parse_JSON": {
+              "type": "ParseJson",
+              "runAfter": { "HTTP_Get_ManagedDevices": ["Succeeded"] },
+              "inputs": {
+                "content": "@body('HTTP_Get_ManagedDevices')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": ["string", "null"] },
+                          "deviceName": { "type": ["string", "null"] },
+                          "userPrincipalName": { "type": ["string", "null"] },
+                          "model": { "type": ["string", "null"] },
+                          "manufacturer": { "type": ["string", "null"] },
+                          "operatingSystem": { "type": ["string", "null"] },
+                          "osVersion": { "type": ["string", "null"] },
+                          "complianceState": { "type": ["string", "null"] },
+                          "lastSyncDateTime": { "type": ["string", "null"] },
+                          "serialNumber": { "type": ["string", "null"] }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Select": {
+              "type": "Select",
+              "runAfter": { "Parse_JSON": ["Succeeded"] },
+              "inputs": {
+                "from": "@body('Parse_JSON')?['value']",
+                "select": {
+                  "DeviceId": "@coalesce(item()?['id'], '')",
+                  "DeviceName": "@coalesce(item()?['deviceName'], '')",
+                  "UserPrincipal": "@coalesce(item()?['userPrincipalName'], '')",
+                  "OS": "@coalesce(item()?['operatingSystem'], '')",
+                  "OSVersion": "@coalesce(item()?['osVersion'], '')",
+                  "Compliance": "@coalesce(item()?['complianceState'], '')",
+                  "LastSync": "@item()?['lastSyncDateTime']",
+                  "SerialNumber": "@coalesce(item()?['serialNumber'], '')",
+                  "TimeGenerated": "@utcNow()"
+                }
+              }
+            },
+            "Send_to_DCR": {
+              "type": "Http",
+              "runAfter": { "Select": ["Succeeded"] },
+              "inputs": {
+                "uri": "@parameters('logsIngestionUri')",
+                "method": "POST",
+                "headers": { "Content-Type": "application/json" },
+                "body": "@outputs('Select')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "@parameters('monitorAudience')"
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "tenantId": { "value": "[parameters('tenantId')]" },
+          "clientId": { "value": "[parameters('clientId')]" },
+          "clientSecret": { "value": "[parameters('clientSecret')]" },
+          "entraLoginEndpoint": { "value": "[parameters('entraLoginEndpoint')]" },
+          "graphEndpoint": { "value": "[parameters('graphEndpoint')]" },
+          "logsIngestionUri": { "value": "[parameters('logsIngestionUri')]" },
+          "monitorAudience": { "value": "[parameters('monitorAudience')]" }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "workflowResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Logic/workflows', parameters('workflowName'))]"
+    },
+    "workflowPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('workflowName')), '2019-05-01', 'Full').identity.principalId]"
+    }
+  }
+}
