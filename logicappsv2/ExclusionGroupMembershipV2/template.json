@@ -1,0 +1,197 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "2.0.0.0",
+  "parameters": {
+    "workflowName": { "type": "string", "defaultValue": "ExclusionGroupMembershipV2" },
+    "tenantId": { "type": "string" },
+    "clientId": { "type": "string" },
+    "clientSecret": { "type": "secureString" },
+    "exclusionGroupsCsv": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Comma-separated objectId=Group Name pairs" }
+    },
+    "entraLoginEndpoint": { "type": "string", "defaultValue": "https://login.microsoftonline.com" },
+    "graphEndpoint": { "type": "string", "defaultValue": "https://graph.microsoft.com" },
+    "logsIngestionUri": { "type": "string" },
+    "monitorAudience": { "type": "string", "defaultValue": "https://monitor.azure.com" }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('workflowName')]",
+      "location": "[resourceGroup().location]",
+      "identity": { "type": "SystemAssigned" },
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "2.0.0.0",
+          "parameters": {
+            "tenantId": { "type": "string" },
+            "clientId": { "type": "string" },
+            "clientSecret": { "type": "securestring" },
+            "exclusionGroupsCsv": { "type": "string" },
+            "entraLoginEndpoint": { "type": "string" },
+            "graphEndpoint": { "type": "string" },
+            "logsIngestionUri": { "type": "string" },
+            "monitorAudience": { "type": "string" }
+          },
+          "triggers": {
+            "Recurrence": {
+              "type": "Recurrence",
+              "recurrence": { "frequency": "Day", "interval": 1 }
+            }
+          },
+          "actions": {
+            "Initialize_variables": {
+              "type": "InitializeVariable",
+              "runAfter": {},
+              "inputs": {
+                "variables": [
+                  { "name": "CollectGroupMembers", "type": "array", "value": [] }
+                ]
+              }
+            },
+            "Get_Token": {
+              "type": "Http",
+              "runAfter": { "Initialize_variables": ["Succeeded"] },
+              "inputs": {
+                "uri": "@{concat(parameters('entraLoginEndpoint'), '/', parameters('tenantId'), '/oauth2/v2.0/token')}",
+                "method": "POST",
+                "headers": { "Content-Type": "application/x-www-form-urlencoded" },
+                "body": "@{concat('grant_type=client_credentials&client_id=', encodeUriComponent(parameters('clientId')), '&client_secret=', encodeUriComponent(parameters('clientSecret')), '&scope=', encodeUriComponent(concat(parameters('graphEndpoint'), '/.default')))}"
+              },
+              "runtimeConfiguration": {
+                "secureData": { "properties": ["inputs", "outputs"] }
+              }
+            },
+            "Compose_Group_Pairs": {
+              "type": "Compose",
+              "runAfter": { "Get_Token": ["Succeeded"] },
+              "inputs": "@split(replace(replace(parameters('exclusionGroupsCsv'),'\r',''),'\n',''),',')"
+            },
+            "Filter_NonEmpty_Pairs": {
+              "type": "Query",
+              "runAfter": { "Compose_Group_Pairs": ["Succeeded"] },
+              "inputs": {
+                "from": "@outputs('Compose_Group_Pairs')",
+                "where": "@and(not(empty(trim(item()))), contains(item(), '='))"
+              }
+            },
+            "Select_Group_Objects": {
+              "type": "Select",
+              "runAfter": { "Filter_NonEmpty_Pairs": ["Succeeded"] },
+              "inputs": {
+                "from": "@body('Filter_NonEmpty_Pairs')",
+                "select": {
+                  "GroupId": "@trim(first(split(item(),'=')))",
+                  "GroupName": "@trim(join(skip(split(item(),'='), 1), '='))"
+                }
+              }
+            },
+            "For_each_group": {
+              "type": "Foreach",
+              "foreach": "@body('Select_Group_Objects')",
+              "runAfter": { "Select_Group_Objects": ["Succeeded"] },
+              "operationOptions": "Sequential",
+              "actions": {
+                "Get_Group_Members": {
+                  "type": "Http",
+                  "inputs": {
+                    "uri": "@{concat(parameters('graphEndpoint'), '/v1.0/groups/', items('For_each_group')?['GroupId'], '/members?$select=id,displayName,userPrincipalName,deviceId&$top=999')}",
+                    "method": "GET",
+                    "headers": {
+                      "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                      "ConsistencyLevel": "eventual"
+                    }
+                  },
+                  "runtimeConfiguration": {
+                    "paginationPolicy": { "minimumItemCount": 1000 }
+                  }
+                },
+                "For_each_member": {
+                  "type": "Foreach",
+                  "foreach": "@coalesce(body('Get_Group_Members')?['value'], createArray())",
+                  "runAfter": { "Get_Group_Members": ["Succeeded"] },
+                  "operationOptions": "Sequential",
+                  "actions": {
+                    "Append_to_array_variable": {
+                      "type": "AppendToArrayVariable",
+                      "inputs": {
+                        "name": "CollectGroupMembers",
+                        "value": {
+                          "Id": "@{item()?['id']}",
+                          "DisplayName": "@{coalesce(item()?['displayName'],'')}",
+                          "UserPrincipalName": "@{coalesce(item()?['userPrincipalName'],'')}",
+                          "DeviceId": "@{coalesce(item()?['deviceId'],'')}",
+                          "ObjectType": "@{coalesce(item()?['@odata.type'],'')}",
+                          "GroupName": "@{items('For_each_group')?['GroupName']}",
+                          "GroupId": "@{items('For_each_group')?['GroupId']}",
+                          "TimeGenerated": "@{utcNow()}"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "Select_Output": {
+              "type": "Select",
+              "runAfter": { "For_each_group": ["Succeeded", "TimedOut", "Failed", "Skipped"] },
+              "inputs": {
+                "from": "@variables('CollectGroupMembers')",
+                "select": {
+                  "Id": "@item()?['Id']",
+                  "DisplayName": "@item()?['DisplayName']",
+                  "UserPrincipalName": "@item()?['UserPrincipalName']",
+                  "DeviceId": "@item()?['DeviceId']",
+                  "ObjectType": "@item()?['ObjectType']",
+                  "GroupName": "@item()?['GroupName']",
+                  "GroupId": "@item()?['GroupId']",
+                  "TimeGenerated": "@item()?['TimeGenerated']"
+                }
+              }
+            },
+            "Send_to_DCR": {
+              "type": "Http",
+              "runAfter": { "Select_Output": ["Succeeded"] },
+              "inputs": {
+                "uri": "@parameters('logsIngestionUri')",
+                "method": "POST",
+                "headers": { "Content-Type": "application/json" },
+                "body": "@outputs('Select_Output')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "@parameters('monitorAudience')"
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "tenantId": { "value": "[parameters('tenantId')]" },
+          "clientId": { "value": "[parameters('clientId')]" },
+          "clientSecret": { "value": "[parameters('clientSecret')]" },
+          "exclusionGroupsCsv": { "value": "[parameters('exclusionGroupsCsv')]" },
+          "entraLoginEndpoint": { "value": "[parameters('entraLoginEndpoint')]" },
+          "graphEndpoint": { "value": "[parameters('graphEndpoint')]" },
+          "logsIngestionUri": { "value": "[parameters('logsIngestionUri')]" },
+          "monitorAudience": { "value": "[parameters('monitorAudience')]" }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "workflowResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Logic/workflows', parameters('workflowName'))]"
+    },
+    "workflowPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('workflowName')), '2019-05-01', 'Full').identity.principalId]"
+    }
+  }
+}
