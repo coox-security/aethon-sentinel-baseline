@@ -1,0 +1,279 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "2.0.0.0",
+  "parameters": {
+    "workflowName": {
+      "type": "string",
+      "defaultValue": "AvePointLoggingV2"
+    },
+    "eventHubNamespaceName": {
+      "type": "string",
+      "metadata": {
+        "description": "Globally unique Event Hubs namespace name"
+      }
+    },
+    "eventHubName": {
+      "type": "string",
+      "defaultValue": "avepointlogseventhub"
+    },
+    "eventHubConnectionName": {
+      "type": "string",
+      "defaultValue": "avepoint-eventhubs-v2"
+    },
+    "logsIngestionUri": {
+      "type": "string"
+    },
+    "monitorAudience": {
+      "type": "string",
+      "defaultValue": "https://monitor.azure.com"
+    }
+  },
+  "variables": {
+    "eventHubApiId": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', resourceGroup().location, 'eventhubs')]",
+    "eventHubConnectionId": "[resourceId('Microsoft.Web/connections', parameters('eventHubConnectionName'))]",
+    "rootAuthorizationRuleId": "[resourceId('Microsoft.EventHub/namespaces/authorizationRules', parameters('eventHubNamespaceName'), 'RootManageSharedAccessKey')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.EventHub/namespaces",
+      "apiVersion": "2021-11-01",
+      "name": "[parameters('eventHubNamespaceName')]",
+      "location": "[resourceGroup().location]",
+      "sku": {
+        "name": "Standard",
+        "tier": "Standard",
+        "capacity": 1
+      },
+      "properties": {
+        "isAutoInflateEnabled": false,
+        "maximumThroughputUnits": 0,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.EventHub/namespaces/eventhubs",
+      "apiVersion": "2021-11-01",
+      "name": "[format('{0}/{1}', parameters('eventHubNamespaceName'), parameters('eventHubName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', parameters('eventHubNamespaceName'))]"
+      ],
+      "properties": {
+        "messageRetentionInDays": 1,
+        "partitionCount": 2,
+        "status": "Active"
+      }
+    },
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('eventHubConnectionName')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces', parameters('eventHubNamespaceName'))]"
+      ],
+      "properties": {
+        "displayName": "[parameters('eventHubConnectionName')]",
+        "api": {
+          "id": "[variables('eventHubApiId')]"
+        },
+        "parameterValues": {
+          "connectionString": "[listKeys(variables('rootAuthorizationRuleId'), '2021-11-01').primaryConnectionString]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('workflowName')]",
+      "location": "[resourceGroup().location]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.EventHub/namespaces/eventhubs', parameters('eventHubNamespaceName'), parameters('eventHubName'))]",
+        "[resourceId('Microsoft.Web/connections', parameters('eventHubConnectionName'))]"
+      ],
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "2.0.0.0",
+          "parameters": {
+            "$connections": {
+              "type": "object",
+              "defaultValue": {}
+            },
+            "eventHubName": {
+              "type": "string"
+            },
+            "logsIngestionUri": {
+              "type": "string"
+            },
+            "monitorAudience": {
+              "type": "string"
+            }
+          },
+          "triggers": {
+            "When_events_are_available_in_Event_Hub": {
+              "type": "ApiConnection",
+              "recurrence": {
+                "frequency": "Minute",
+                "interval": 3
+              },
+              "splitOn": "@triggerBody()",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['eventhubs']['connectionId']"
+                  }
+                },
+                "method": "get",
+                "path": "@{concat('/', encodeURIComponent(parameters('eventHubName')), '/events/batch/head')}",
+                "queries": {
+                  "contentType": "application/octet-stream",
+                  "consumerGroupName": "$Default",
+                  "maximumEventsCount": 50
+                }
+              }
+            }
+          },
+          "actions": {
+            "Compose": {
+              "type": "Compose",
+              "runAfter": {},
+              "inputs": "@base64ToString(triggerBody()?['contentData'])"
+            },
+            "Parse_JSON": {
+              "type": "ParseJson",
+              "runAfter": {
+                "Compose": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "content": "@outputs('Compose')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ActionName": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ActionUser": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ActionTime": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "Message": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ClientIP": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            "Select": {
+              "type": "Select",
+              "runAfter": {
+                "Parse_JSON": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "from": "@createArray(body('Parse_JSON'))",
+                "select": {
+                  "ActionName": "@coalesce(item()?['ActionName'], '')",
+                  "ActionUser": "@coalesce(item()?['ActionUser'], '')",
+                  "ActionTime": "@item()?['ActionTime']",
+                  "Message": "@coalesce(item()?['Message'], '')",
+                  "ClientIP": "@coalesce(item()?['ClientIP'], '')",
+                  "TimeGenerated": "@utcNow()"
+                }
+              }
+            },
+            "Send_to_DCR": {
+              "type": "Http",
+              "runAfter": {
+                "Select": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "uri": "@parameters('logsIngestionUri')",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@outputs('Select')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "@parameters('monitorAudience')"
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "eventhubs": {
+                "id": "[variables('eventHubApiId')]",
+                "connectionId": "[variables('eventHubConnectionId')]",
+                "connectionName": "[parameters('eventHubConnectionName')]"
+              }
+            }
+          },
+          "eventHubName": {
+            "value": "[parameters('eventHubName')]"
+          },
+          "logsIngestionUri": {
+            "value": "[parameters('logsIngestionUri')]"
+          },
+          "monitorAudience": {
+            "value": "[parameters('monitorAudience')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "workflowResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Logic/workflows', parameters('workflowName'))]"
+    },
+    "workflowPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('workflowName')), '2019-05-01', 'Full').identity.principalId]"
+    },
+    "eventHubNamespaceName": {
+      "type": "string",
+      "value": "[parameters('eventHubNamespaceName')]"
+    },
+    "eventHubName": {
+      "type": "string",
+      "value": "[parameters('eventHubName')]"
+    },
+    "eventHubConnectionResourceId": {
+      "type": "string",
+      "value": "[variables('eventHubConnectionId')]"
+    }
+  }
+}
