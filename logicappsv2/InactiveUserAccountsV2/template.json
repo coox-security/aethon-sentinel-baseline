@@ -1,0 +1,229 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "2.0.0.0",
+  "parameters": {
+    "workflowName": {
+      "type": "string",
+      "defaultValue": "InactiveUserAccountsV2"
+    },
+    "tenantId": {
+      "type": "string",
+      "metadata": {
+        "description": "Microsoft Entra tenant ID"
+      }
+    },
+    "clientId": {
+      "type": "string",
+      "metadata": {
+        "description": "Application registration client ID used to query Microsoft Graph"
+      }
+    },
+    "clientSecret": {
+      "type": "secureString",
+      "metadata": {
+        "description": "Application registration client secret"
+      }
+    },
+    "userInactivityDays": {
+      "type": "int",
+      "defaultValue": 30,
+      "minValue": 1
+    },
+    "entraLoginEndpoint": {
+      "type": "string",
+      "defaultValue": "https://login.microsoftonline.com"
+    },
+    "graphEndpoint": {
+      "type": "string",
+      "defaultValue": "https://graph.microsoft.com"
+    },
+    "logsIngestionUri": {
+      "type": "string",
+      "metadata": {
+        "description": "Complete Logs Ingestion API URI including DCE endpoint, DCR immutable ID, stream, and api-version"
+      }
+    },
+    "monitorAudience": {
+      "type": "string",
+      "defaultValue": "https://monitor.azure.com"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2019-05-01",
+      "name": "[parameters('workflowName')]",
+      "location": "[resourceGroup().location]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "2.0.0.0",
+          "parameters": {
+            "tenantId": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "clientSecret": {
+              "type": "securestring"
+            },
+            "userInactivityDays": {
+              "type": "int"
+            },
+            "entraLoginEndpoint": {
+              "type": "string"
+            },
+            "graphEndpoint": {
+              "type": "string"
+            },
+            "logsIngestionUri": {
+              "type": "string"
+            },
+            "monitorAudience": {
+              "type": "string"
+            }
+          },
+          "triggers": {
+            "Recurrence": {
+              "type": "Recurrence",
+              "recurrence": {
+                "frequency": "Day",
+                "interval": 1
+              }
+            }
+          },
+          "actions": {
+            "Get_Token": {
+              "type": "Http",
+              "runAfter": {},
+              "inputs": {
+                "uri": "@{concat(parameters('entraLoginEndpoint'), '/', parameters('tenantId'), '/oauth2/v2.0/token')}",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/x-www-form-urlencoded"
+                },
+                "body": "@{concat('grant_type=client_credentials&client_id=', encodeUriComponent(parameters('clientId')), '&client_secret=', encodeUriComponent(parameters('clientSecret')), '&scope=', encodeUriComponent(concat(parameters('graphEndpoint'), '/.default')))}"
+              },
+              "runtimeConfiguration": {
+                "secureData": {
+                  "properties": [
+                    "inputs",
+                    "outputs"
+                  ]
+                }
+              }
+            },
+            "Get_Users": {
+              "type": "Http",
+              "runAfter": {
+                "Get_Token": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "uri": "@{concat(parameters('graphEndpoint'), '/v1.0/users?$select=id,displayName,userPrincipalName,accountEnabled,signInActivity&$top=999')}",
+                "method": "GET",
+                "headers": {
+                  "Authorization": "Bearer @{body('Get_Token')?['access_token']}",
+                  "ConsistencyLevel": "eventual"
+                }
+              }
+            },
+            "Filter_StaleUsers": {
+              "type": "Query",
+              "runAfter": {
+                "Get_Users": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "from": "@body('Get_Users')?['value']",
+                "where": "@and(not(empty(item()?['signInActivity']?['lastSignInDateTime'])), lessOrEquals(ticks(parseDateTime(item()?['signInActivity']?['lastSignInDateTime'])), ticks(addDays(utcNow(), mul(-1, parameters('userInactivityDays'))))))"
+              }
+            },
+            "Flatten_Users": {
+              "type": "Select",
+              "runAfter": {
+                "Filter_StaleUsers": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "from": "@body('Filter_StaleUsers')",
+                "select": {
+                  "displayName": "@coalesce(item()?['displayName'], '')",
+                  "userPrincipalName": "@coalesce(item()?['userPrincipalName'], '')",
+                  "accountEnabled": "@item()?['accountEnabled']",
+                  "lastSignInDateTime": "@item()?['signInActivity']?['lastSignInDateTime']",
+                  "TimeGenerated": "@utcNow()"
+                }
+              }
+            },
+            "Send_to_DCR": {
+              "type": "Http",
+              "runAfter": {
+                "Flatten_Users": [
+                  "Succeeded"
+                ]
+              },
+              "inputs": {
+                "uri": "@parameters('logsIngestionUri')",
+                "method": "POST",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@outputs('Flatten_Users')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "@parameters('monitorAudience')"
+                }
+              }
+            }
+          },
+          "outputs": {}
+        },
+        "parameters": {
+          "tenantId": {
+            "value": "[parameters('tenantId')]"
+          },
+          "clientId": {
+            "value": "[parameters('clientId')]"
+          },
+          "clientSecret": {
+            "value": "[parameters('clientSecret')]"
+          },
+          "userInactivityDays": {
+            "value": "[parameters('userInactivityDays')]"
+          },
+          "entraLoginEndpoint": {
+            "value": "[parameters('entraLoginEndpoint')]"
+          },
+          "graphEndpoint": {
+            "value": "[parameters('graphEndpoint')]"
+          },
+          "logsIngestionUri": {
+            "value": "[parameters('logsIngestionUri')]"
+          },
+          "monitorAudience": {
+            "value": "[parameters('monitorAudience')]"
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "workflowResourceId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Logic/workflows', parameters('workflowName'))]"
+    },
+    "workflowPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('workflowName')), '2019-05-01', 'Full').identity.principalId]"
+    }
+  }
+}
