@@ -430,15 +430,15 @@
           {
             "type": 3,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "let LatestDumpTime = toscalar(\r\n    InactiveUserAccountsV2_CL\r\n    | summarize max(TimeGenerated)\r\n);\r\nInactiveUserAccountsV2_CL\r\n| where TimeGenerated == LatestDumpTime\r\n| extend Users = parse_json(body_s)\r\n| mv-expand Users\r\n| project \r\n    displayName = tostring(Users.displayName),\r\n    userPrincipalName = tostring(Users.userPrincipalName),\r\n    accountEnabled = tostring(Users.accountEnabled),\r\n    lastSignInDateTime = tostring(Users.lastSignInDateTime)\r\n| where isnotempty(displayName)\r\n| where accountEnabled == \"true\"\r\n",
-              "size": 0,
-              "queryType": 0,
-              "resourceType": "{Workspace}",
-              "crossComponentResources": [
-                "{Workspace}"
-              ]
-            },
+  "version": "KqlItem/1.0",
+  "query": "let LatestDumpTime = toscalar(\r\n    InactiveUserAccountsV2_CL\r\n    | summarize max(TimeGenerated)\r\n);\r\nInactiveUserAccountsV2_CL\r\n| where TimeGenerated == LatestDumpTime\r\n| project\r\n    displayName,\r\n    userPrincipalName,\r\n    accountEnabled,\r\n    lastSignInDateTime\r\n| where isnotempty(displayName)\r\n| where accountEnabled == true\r\n",
+  "size": 0,
+  "queryType": 0,
+  "resourceType": "{Workspace}",
+  "crossComponentResources": [
+    "{Workspace}"
+  ]
+},
             "customWidth": "0",
             "name": "query - 14",
             "styleSettings": {
@@ -456,16 +456,16 @@
     {
       "type": 3,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "GroupMembershipV2_CL\r\n| where TimeGenerated == toscalar(\r\n    GroupMembershipV2_CL\r\n    | summarize max(TimeGenerated)\r\n)\r\n| extend records_array = parse_json(body_s)\r\n| mv-expand record = records_array\r\n| extend record_json = tostring(record)\r\n| extend\r\n    Id = tostring(record.Id),\r\n    DisplayName = tostring(record.DisplayName),\r\n    UserPrincipalName = tostring(record.UserPrincipalName),\r\n    DeviceId = tostring(record.DeviceId),\r\n    ObjectType = tostring(record.ObjectType),\r\n    GroupName = tostring(record.GroupName),\r\n    GroupId = tostring(record.GroupId),\r\n    MemberTime = tostring(record.TimeGenerated)\r\n| where isnotempty(DisplayName)\r\n| where GroupName == \"Exclusions - Require Device Compliance - Workstations Conditional Access Policy\"\r\n| project GroupName, UserPrincipalName, DisplayName",
-        "size": 0,
-        "title": "Device Compliance Exclusions",
-        "timeContext": {
-          "durationMs": 86400000
-        },
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces"
-      },
+  "version": "KqlItem/1.0",
+  "query": "GroupMembershipV2_CL\r\n| where TimeGenerated == toscalar(\r\n    GroupMembershipV2_CL\r\n    | summarize max(TimeGenerated)\r\n)\r\n| where isnotempty(DisplayName)\r\n| where GroupName == \"Exclusions - Require Device Compliance - Workstations Conditional Access Policy\"\r\n| project GroupName, UserPrincipalName, DisplayName",
+  "size": 0,
+  "title": "Device Compliance Exclusions",
+  "timeContext": {
+    "durationMs": 86400000
+  },
+  "queryType": 0,
+  "resourceType": "microsoft.operationalinsights/workspaces"
+},
       "customWidth": "50",
       "name": "query - 14",
       "styleSettings": {
@@ -549,16 +549,16 @@
     {
       "type": 3,
       "content": {
-        "version": "KqlItem/1.0",
-        "query": "IntuneDevicesV2_CL\r\n| where TimeGenerated > ago(24h)\r\n| mv-expand record = parse_json(body_s)\r\n| extend\r\n    DeviceName = tostring(record.DeviceName),\r\n    Compliance = tostring(record.Compliance),\r\n    UserPrincipal = tostring(record.UserPrincipal),\r\n    LastContact = format_datetime(todatetime(record.LastSync), \"M/dd/yy\")\r\n| where isnotempty(Compliance) and Compliance != \"compliant\"\r\n| project DeviceName, Compliance, UserPrincipal, LastContact\r\n| sort by DeviceName asc",
-        "size": 0,
-        "title": "Device Compliance",
-        "timeContext": {
-          "durationMs": 86400000
-        },
-        "queryType": 0,
-        "resourceType": "microsoft.operationalinsights/workspaces"
-      },
+  "version": "KqlItem/1.0",
+  "query": "IntuneDevicesV2_CL\r\n| where TimeGenerated > ago(24h)\r\n| extend\r\n    LastContact = format_datetime(LastSync, \"M/dd/yy\")\r\n| where isnotempty(Compliance) and Compliance != \"compliant\"\r\n| project DeviceName, Compliance, UserPrincipal, LastContact\r\n| sort by DeviceName asc",
+  "size": 0,
+  "title": "Device Compliance",
+  "timeContext": {
+    "durationMs": 86400000
+  },
+  "queryType": 0,
+  "resourceType": "microsoft.operationalinsights/workspaces"
+},
       "customWidth": "50",
       "name": "query - 13",
       "styleSettings": {
