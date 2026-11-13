@@ -459,7 +459,7 @@
   "version": "KqlItem/1.0",
   "query": "GroupMembershipV2_CL
 | where GroupName == "Exclusions - ASC-Entra Conditional Access-Require Device Compliance - Workstations"
-| summarize arg_max(TimeGenerated, *) by Id
+| summarize arg_max(TimeGenerated, *) by GroupId, Id
 | where isnotempty(DisplayName)
 | project GroupName, UserPrincipalName, DisplayName, ObjectType
 | order by DisplayName asc",
