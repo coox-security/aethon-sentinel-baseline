@@ -161,7 +161,7 @@
                 "uri": "@parameters('logsIngestionUri')",
                 "method": "POST",
                 "headers": { "Content-Type": "application/json" },
-                "body": "@outputs('Select_Output')",
+                "body": "@body('Select_Output')",
                 "authentication": {
                   "type": "ManagedServiceIdentity",
                   "audience": "@parameters('monitorAudience')"
