@@ -457,7 +457,12 @@
       "type": 3,
       "content": {
   "version": "KqlItem/1.0",
-  "query": "GroupMembershipV2_CL\r\n| where TimeGenerated == toscalar(\r\n    GroupMembershipV2_CL\r\n    | summarize max(TimeGenerated)\r\n)\r\n| where isnotempty(DisplayName)\r\n| where GroupName == \"Exclusions - Require Device Compliance - Workstations Conditional Access Policy\"\r\n| project GroupName, UserPrincipalName, DisplayName",
+  "query": "GroupMembershipV2_CL
+| where GroupName == "Exclusions - ASC-Entra Conditional Access-Require Device Compliance - Workstations"
+| summarize arg_max(TimeGenerated, *) by Id
+| where isnotempty(DisplayName)
+| project GroupName, UserPrincipalName, DisplayName, ObjectType
+| order by DisplayName asc",
   "size": 0,
   "title": "Device Compliance Exclusions",
   "timeContext": {
