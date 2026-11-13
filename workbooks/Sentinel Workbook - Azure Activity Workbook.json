@@ -456,12 +456,7 @@
       "type": 3,
       "content": {
   "version": "KqlItem/1.0",
-  "query": "GroupMembershipV2_CL
-| where GroupName == "Exclusions - ASC-Entra Conditional Access-Require Device Compliance - Workstations"
-| summarize arg_max(TimeGenerated, *) by GroupId, Id
-| where isnotempty(DisplayName)
-| project GroupName, UserPrincipalName, DisplayName, ObjectType
-| order by DisplayName asc",
+  "query": "GroupMembershipV2_CL\r\n| where GroupName == \"Exclusions - ASC-Entra Conditional Access-Require Device Compliance - Workstations\"\r\n| summarize arg_max(TimeGenerated, *) by GroupId, Id\r\n| where isnotempty(DisplayName)\r\n| project GroupName, UserPrincipalName, DisplayName, ObjectType\r\n| order by DisplayName asc",
   "size": 0,
   "title": "Device Compliance Exclusions",
   "timeContext": {
