@@ -431,8 +431,7 @@
             "type": 3,
             "content": {
   "version": "KqlItem/1.0",
-  "query": "let LatestDumpTime = toscalar(\r\n    InactiveUserAccountsV2_CL\r\n    | summarize max(TimeGenerated)\r\n);\r\nInactiveUserAccountsV2_CL\r\n| where TimeGenerated == LatestDumpTime\r\n| project\r\n    displayName,\r\n    userPrincipalName,\r\n    accountEnabled,\r\n    lastSignInDateTime\r\n| where isnotempty(displayName)\r\n| where accountEnabled == true\r\n",
-  "size": 0,
+"query": "let LatestDumpTime = toscalar(\r\n    InactiveUserAccountsV2_CL\r\n    | summarize max(TimeGenerated)\r\n);\r\nInactiveUserAccountsV2_CL\r\n| where TimeGenerated between (LatestDumpTime - 5m .. LatestDumpTime)\r\n| where accountEnabled == true\r\n| where isnotempty(displayName)\r\n| summarize arg_max(TimeGenerated, *) by userPrincipalName\r\n| project\r\n    displayName,\r\n    userPrincipalName,\r\n    accountEnabled,\r\n    lastSignInDateTime\r\n| order by displayName asc\r\n",  "size": 0,
   "queryType": 0,
   "resourceType": "{Workspace}",
   "crossComponentResources": [
