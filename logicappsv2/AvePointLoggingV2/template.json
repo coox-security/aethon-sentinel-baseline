@@ -194,7 +194,7 @@
                 "headers": {
                   "Content-Type": "application/json"
                 },
-                "body": "@outputs('Select')",
+                "body": "@body('Select')",
                 "authentication": {
                   "type": "ManagedServiceIdentity",
                   "audience": "@parameters('monitorAudience')"
