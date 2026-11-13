@@ -177,7 +177,7 @@
                 "headers": {
                   "Content-Type": "application/json"
                 },
-                "body": "@outputs('Flatten_Users')",
+                "body": "@body('Flatten_Users')",
                 "authentication": {
                   "type": "ManagedServiceIdentity",
                   "audience": "@parameters('monitorAudience')"
